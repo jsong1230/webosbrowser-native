@@ -1,7 +1,15 @@
 # 테스트 CMakeLists.txt
 
-# Google Test 찾기
-find_package(GTest REQUIRED)
+# Google Test - FetchContent로 자동 다운로드
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+)
+FetchContent_MakeAvailable(googletest)
+
+# 또는 시스템 GTest 사용 시도
+find_package(GTest QUIET)
 
 # 테스트 포함 디렉토리
 include_directories(
@@ -17,11 +25,13 @@ set(CMAKE_AUTORCC ON)
 set(UNIT_TESTS
     unit/URLValidatorTest.cpp
     unit/URLBarTest.cpp
+    unit/TabManagerTest.cpp
 )
 
 # 통합 테스트
 set(INTEGRATION_TESTS
     integration/BrowserWindowIntegrationTest.cpp
+    integration/BrowserWindowTabManagerIntegrationTest.cpp
 )
 
 # 모든 테스트 목록
@@ -49,9 +59,8 @@ target_link_libraries(webosbrowser_tests
     Qt5::Core
     Qt5::Gui
     Qt5::Widgets
-    Qt5::WebEngineWidgets
-    GTest::GTest
-    GTest::Main
+    gtest
+    gtest_main
 )
 
 # 테스트 등록
