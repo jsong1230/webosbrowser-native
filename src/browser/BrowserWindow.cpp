@@ -14,6 +14,7 @@
 #include "../ui/ErrorPage.h"
 #include "../ui/DownloadPanel.h"
 #include "../ui/SettingsPanel.h"
+#include "../ui/HomePage.h"
 #include "../services/StorageService.h"
 #include "../services/HistoryService.h"
 #include "../services/BookmarkService.h"
@@ -52,6 +53,7 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     , historyPanel_(nullptr)
     , downloadPanel_(nullptr)
     , settingsPanel_(nullptr)
+    , homePage_(nullptr)
     , tabManager_(new TabManager(this))
     , storageService_(new StorageService(this))
     , bookmarkService_(nullptr)
@@ -110,6 +112,9 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     // WebView에 다운로드 핸들러 설정
     webView_->setupDownloadHandler(downloadManager_);
 
+    // HomePage 생성
+    homePage_ = new HomePage(bookmarkService_, contentWidget_);
+
     setupUI();
     setupConnections();
 
@@ -148,10 +153,11 @@ void BrowserWindow::setupUI() {
     // LoadingIndicator 추가 (NavigationBar 아래, 얇은 프로그레스바)
     mainLayout_->addWidget(loadingIndicator_);
 
-    // WebView/ErrorPage 컨테이너 설정 (QStackedLayout)
+    // WebView/ErrorPage/HomePage 컨테이너 설정 (QStackedLayout)
     stackedLayout_->setStackingMode(QStackedLayout::StackOne);
-    stackedLayout_->addWidget(webView_);
-    stackedLayout_->addWidget(errorPage_);
+    stackedLayout_->addWidget(webView_);      // index 0
+    stackedLayout_->addWidget(errorPage_);    // index 1
+    stackedLayout_->addWidget(homePage_);     // index 2
     stackedLayout_->setCurrentWidget(webView_);  // 기본값: WebView 표시
 
     // 컨테이너를 메인 레이아웃에 추가 (stretch=1로 남은 공간 모두 차지)
@@ -242,7 +248,32 @@ void BrowserWindow::setupConnections() {
 
     // ErrorPage 시그널 연결
     connect(errorPage_, &ErrorPage::retryRequested, this, &BrowserWindow::onRetryRequested);
-    connect(errorPage_, &ErrorPage::homeRequested, this, &BrowserWindow::onHomeRequested);
+    connect(errorPage_, &ErrorPage::homeRequested, this, [this]() {
+        onHomeRequested(settingsService_->homepage());
+    });
+
+    // HomePage 시그널 연결
+    if (homePage_) {
+        connect(homePage_, &HomePage::bookmarkSelected,
+                this, &BrowserWindow::onBookmarkSelectedFromHome);
+        connect(homePage_, &HomePage::bookmarkAddRequested,
+                this, &BrowserWindow::onBookmarkButtonClicked);
+        connect(homePage_, &HomePage::settingsRequested,
+                this, [this]() {
+                    if (settingsPanel_) {
+                        settingsPanel_->show();
+                        settingsPanel_->raise();
+                    }
+                });
+        connect(homePage_, &HomePage::backRequested,
+                this, [this]() {
+                    if (webView_->canGoBack()) {
+                        webView_->goBack();
+                    } else {
+                        hideHomePage();
+                    }
+                });
+    }
 
     // WebView 로딩 성공 시 WebView로 전환 (에러 화면 숨김)
     connect(webView_, &WebView::loadFinished, this, [this](bool success) {
@@ -254,6 +285,10 @@ void BrowserWindow::setupConnections() {
 
     // WebView 로딩 완료 → 히스토리 자동 기록
     connect(webView_, &WebView::loadFinished, this, &BrowserWindow::onPageLoadFinished);
+
+    // NavigationBar 홈 요청 시그널 연결
+    connect(navigationBar_, &NavigationBar::homeRequested,
+            this, &BrowserWindow::onHomeRequested);
 
     // NavigationBar 히스토리 버튼 → 히스토리 패널 열기
     // TODO: NavigationBar에 historyButtonClicked 시그널 추가 필요
@@ -298,6 +333,8 @@ void BrowserWindow::setupConnections() {
                 this, &BrowserWindow::onSearchEngineChanged);
         connect(settingsService_, &SettingsService::homepageChanged,
                 this, &BrowserWindow::onHomepageChanged);
+        connect(settingsService_, &SettingsService::homepageChanged,
+                navigationBar_, &NavigationBar::setHomepage);
         connect(settingsService_, &SettingsService::themeChanged,
                 this, &BrowserWindow::onThemeChanged);
     }
@@ -453,25 +490,47 @@ void BrowserWindow::onRetryRequested() {
     fadeOut->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
-void BrowserWindow::onHomeRequested() {
-    qDebug() << "BrowserWindow: 홈으로 이동 요청";
+void BrowserWindow::onHomeRequested(const QString &url) {
+    qDebug() << "BrowserWindow: 홈 요청 - URL:" << url;
 
-    // ErrorPage 페이드아웃 애니메이션
-    QPropertyAnimation *fadeOut = new QPropertyAnimation(errorPage_, "windowOpacity");
-    fadeOut->setDuration(200);
-    fadeOut->setStartValue(1.0);
-    fadeOut->setEndValue(0.0);
-    fadeOut->setEasingCurve(QEasingCurve::InCubic);
+    if (url == "about:favorites") {
+        // 즐겨찾기 홈 화면 표시
+        showHomePage();
+    } else {
+        // 일반 웹 페이지 로드
+        hideHomePage();
+        webView_->load(url);
+    }
+}
 
-    // 애니메이션 완료 후 WebView로 전환 및 홈페이지 이동
-    connect(fadeOut, &QPropertyAnimation::finished, this, [this]() {
-        stackedLayout_->setCurrentWidget(webView_);
-        // 홈 URL은 하드코딩 (향후 SettingsService 연동)
-        webView_->load(QUrl("https://www.google.com"));
-        errorPage_->hide();
-    });
+void BrowserWindow::onBookmarkSelectedFromHome(const QString &url) {
+    qDebug() << "BrowserWindow: 북마크 선택 - URL:" << url;
 
-    fadeOut->start(QAbstractAnimation::DeleteWhenStopped);
+    // HomePage 숨김 → WebView 전환
+    hideHomePage();
+
+    // 웹 페이지 로드
+    webView_->load(url);
+}
+
+void BrowserWindow::showHomePage() {
+    qDebug() << "BrowserWindow: HomePage 표시";
+
+    // stackedLayout_에서 HomePage로 전환
+    stackedLayout_->setCurrentWidget(homePage_);
+
+    // URLBar 업데이트
+    urlBar_->setText("about:favorites");
+
+    // HomePage 새로고침
+    homePage_->refreshBookmarks();
+}
+
+void BrowserWindow::hideHomePage() {
+    qDebug() << "BrowserWindow: HomePage 숨김 → WebView 전환";
+
+    // stackedLayout_에서 WebView로 전환
+    stackedLayout_->setCurrentWidget(webView_);
 }
 
 // [F-14] HTTPS 보안 표시 기능

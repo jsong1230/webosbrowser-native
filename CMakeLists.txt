@@ -35,6 +35,8 @@ set(SOURCES
     src/ui/SecurityIndicator.cpp
     src/ui/DownloadPanel.cpp
     src/ui/SettingsPanel.cpp
+    src/ui/HomePage.cpp
+    src/ui/BookmarkCard.cpp
     src/services/BookmarkService.cpp
     src/services/HistoryService.cpp
     src/services/StorageService.cpp
@@ -61,6 +63,8 @@ set(HEADERS
     src/ui/SecurityIndicator.h
     src/ui/DownloadPanel.h
     src/ui/SettingsPanel.h
+    src/ui/HomePage.h
+    src/ui/BookmarkCard.h
     src/models/Bookmark.h
     src/services/BookmarkService.h
     src/services/HistoryService.h

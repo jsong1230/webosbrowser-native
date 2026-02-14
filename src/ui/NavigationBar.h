@@ -90,6 +90,12 @@ signals:
      */
     void bookmarkButtonClicked();
 
+    /**
+     * @brief 홈 요청 시그널
+     * @param url 홈페이지 URL
+     */
+    void homeRequested(const QString &url);
+
 private:
     /**
      * @brief UI 초기화 (버튼 생성, 레이아웃 설정)

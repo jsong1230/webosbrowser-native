@@ -32,6 +32,7 @@ class DownloadManager;
 class DownloadPanel;
 class SettingsService;
 class SettingsPanel;
+class HomePage;
 
 /**
  * @class BrowserWindow
@@ -207,9 +208,16 @@ private slots:
     void onRetryRequested();
 
     /**
-     * @brief ErrorPage 홈 이동 핸들러
+     * @brief 홈 요청 핸들러
+     * @param url 홈페이지 URL
      */
-    void onHomeRequested();
+    void onHomeRequested(const QString &url);
+
+    /**
+     * @brief HomePage에서 북마크 선택 핸들러
+     * @param url 선택된 북마크 URL
+     */
+    void onBookmarkSelectedFromHome(const QString &url);
 
     /**
      * @brief HTTP 경고 다이얼로그 표시 (디바운싱 후 호출)
@@ -236,6 +244,16 @@ private:
      */
     bool showSecurityWarningDialog(const QUrl &url);
 
+    /**
+     * @brief HomePage 표시
+     */
+    void showHomePage();
+
+    /**
+     * @brief HomePage 숨김
+     */
+    void hideHomePage();
+
 private:
     // UI 컴포넌트
     QWidget *centralWidget_;         ///< 중앙 위젯
@@ -252,6 +270,7 @@ private:
     HistoryPanel *historyPanel_;     ///< 히스토리 패널 (오버레이)
     DownloadPanel *downloadPanel_;   ///< 다운로드 패널
     SettingsPanel *settingsPanel_;   ///< 설정 패널 (오버레이)
+    HomePage *homePage_;             ///< 홈 화면 (즐겨찾기 그리드)
 
     // 서비스
     TabManager *tabManager_;         ///< 탭 관리자

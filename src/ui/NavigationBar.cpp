@@ -94,9 +94,9 @@ void NavigationBar::onReloadClicked() {
 
 void NavigationBar::onHomeClicked() {
     qDebug() << "NavigationBar: 홈 버튼 클릭 - 홈페이지:" << homepage_;
-    if (webView_) {
-        webView_->load(homepage_);
-    }
+
+    // 홈 요청 시그널 발생 (BrowserWindow에서 처리)
+    emit homeRequested(homepage_);
 }
 
 void NavigationBar::setHomepage(const QString &url) {
