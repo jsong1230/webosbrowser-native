@@ -14,11 +14,13 @@
 #include <QUrl>
 #include <QKeyEvent>
 #include <QFocusEvent>
+#include "../utils/SecurityClassifier.h"
 
 namespace webosbrowser {
 
-// Forward declaration
+// Forward declarations
 class URLValidator;
+class SecurityIndicator;
 
 /**
  * @class URLBar
@@ -61,6 +63,12 @@ public:
      * @brief 에러 메시지 숨김
      */
     void hideError();
+
+    /**
+     * @brief 보안 아이콘 업데이트
+     * @param level 보안 등급
+     */
+    void updateSecurityIndicator(SecurityLevel level);
 
 signals:
     /**
@@ -120,6 +128,7 @@ private:
 
 private:
     // UI 컴포넌트
+    SecurityIndicator *securityIndicator_;  ///< 보안 상태 아이콘
     QLineEdit *inputField_;              ///< URL 입력 필드
     QLabel *errorLabel_;                 ///< 에러 메시지 라벨
 

@@ -32,6 +32,7 @@ set(SOURCES
     src/ui/ErrorPage.cpp
     src/ui/BookmarkPanel.cpp
     src/ui/HistoryPanel.cpp
+    src/ui/SecurityIndicator.cpp
     src/services/BookmarkService.cpp
     src/services/HistoryService.cpp
     src/services/StorageService.cpp
@@ -39,6 +40,7 @@ set(SOURCES
     src/utils/Logger.cpp
     src/utils/URLValidator.cpp
     src/utils/DateFormatter.cpp
+    src/utils/SecurityClassifier.cpp
 )
 
 # 헤더 파일 목록
@@ -52,6 +54,7 @@ set(HEADERS
     src/ui/ErrorPage.h
     src/ui/BookmarkPanel.h
     src/ui/HistoryPanel.h
+    src/ui/SecurityIndicator.h
     src/models/Bookmark.h
     src/services/BookmarkService.h
     src/services/HistoryService.h
@@ -60,6 +63,7 @@ set(HEADERS
     src/utils/Logger.h
     src/utils/URLValidator.h
     src/utils/DateFormatter.h
+    src/utils/SecurityClassifier.h
 )
 
 # 실행 파일 생성

@@ -4,6 +4,7 @@
  */
 
 #include "URLBar.h"
+#include "SecurityIndicator.h"
 #include "../utils/URLValidator.h"
 #include "../services/SearchEngine.h"
 #include <QDebug>
@@ -12,6 +13,7 @@ namespace webosbrowser {
 
 URLBar::URLBar(QWidget *parent)
     : QWidget(parent)
+    , securityIndicator_(new SecurityIndicator(this))
     , inputField_(new QLineEdit(this))
     , errorLabel_(new QLabel(this))
     , mainLayout_(new QVBoxLayout(this))
@@ -131,7 +133,10 @@ void URLBar::setupUI() {
     mainLayout_->setContentsMargins(10, 10, 10, 10);
     mainLayout_->setSpacing(5);
 
-    // 입력 필드 레이아웃 (향후 보안 아이콘 추가 가능)
+    // 입력 필드 레이아웃 (보안 아이콘 + URL 입력 필드)
+    inputLayout_->setSpacing(8);
+    inputLayout_->addWidget(securityIndicator_);  // 보안 아이콘 (좌측)
+
     inputField_->setPlaceholderText("URL을 입력하세요...");
     inputField_->setClearButtonEnabled(true);  // X 버튼으로 지우기 가능
     inputLayout_->addWidget(inputField_);
@@ -231,6 +236,10 @@ QUrl URLBar::validateAndCompleteUrl(const QString &input) {
     }
 
     return url;
+}
+
+void URLBar::updateSecurityIndicator(SecurityLevel level) {
+    securityIndicator_->setSecurityLevel(level);
 }
 
 } // namespace webosbrowser

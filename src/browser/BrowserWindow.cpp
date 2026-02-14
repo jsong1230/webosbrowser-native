@@ -16,12 +16,16 @@
 #include "../services/HistoryService.h"
 #include "../services/BookmarkService.h"
 #include "../utils/Logger.h"
+#include "../utils/SecurityClassifier.h"
 #include <QDebug>
 #include <QApplication>
 #include <QScreen>
 #include <QLabel>
 #include <QStatusBar>
 #include <QPropertyAnimation>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QCheckBox>
 
 namespace webosbrowser {
 
@@ -45,8 +49,14 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     , historyService_(nullptr)
     , currentUrl_("")
     , currentTitle_("")
+    , warningTimer_(new QTimer(this))
+    , pendingUrl_()
 {
     qDebug() << "BrowserWindow: 생성 중...";
+
+    // 경고 타이머 초기화
+    warningTimer_->setSingleShot(true);
+    connect(warningTimer_, &QTimer::timeout, this, &BrowserWindow::onWarningTimerTimeout);
 
     // 스토리지 서비스 초기화
     if (!storageService_->initialize()) {
@@ -286,6 +296,16 @@ void BrowserWindow::onUrlChanged(const QString& url) {
     if (bookmarkPanel_) {
         bookmarkPanel_->setCurrentPage(currentUrl_, currentTitle_);
     }
+
+    // [F-14] 보안 등급 분류
+    QUrl qurl(url);
+    SecurityLevel level = SecurityClassifier::classify(qurl);
+
+    // [F-14] URLBar 보안 아이콘 업데이트
+    urlBar_->updateSecurityIndicator(level);
+
+    // [F-14] HTTP 경고 체크
+    checkHttpWarning(qurl);
 }
 
 void BrowserWindow::onLoadError(const QString &errorString) {
@@ -378,6 +398,77 @@ void BrowserWindow::onHomeRequested() {
     });
 
     fadeOut->start(QAbstractAnimation::DeleteWhenStopped);
+}
+
+// [F-14] HTTPS 보안 표시 기능
+
+void BrowserWindow::checkHttpWarning(const QUrl &url) {
+    // Insecure가 아니면 무시
+    SecurityLevel level = SecurityClassifier::classify(url);
+    if (level != SecurityLevel::Insecure) {
+        warningTimer_->stop();
+        return;
+    }
+
+    // 이미 무시한 도메인이면 무시
+    QString host = url.host();
+    if (ignoredDomains_.contains(host)) {
+        qDebug() << "BrowserWindow: 경고 무시 (도메인:" << host << ")";
+        return;
+    }
+
+    // 500ms 디바운싱
+    pendingUrl_ = url;
+    warningTimer_->stop();
+    warningTimer_->start(500);  // 500ms 후 onWarningTimerTimeout 호출
+}
+
+void BrowserWindow::onWarningTimerTimeout() {
+    if (!pendingUrl_.isEmpty() && pendingUrl_.isValid()) {
+        showSecurityWarningDialog(pendingUrl_);
+        pendingUrl_.clear();
+    }
+}
+
+bool BrowserWindow::showSecurityWarningDialog(const QUrl &url) {
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle("안전하지 않은 사이트");
+    msgBox.setText("이 사이트는 보안 연결을 사용하지 않습니다.");
+    msgBox.setInformativeText("개인 정보(비밀번호, 신용카드 번호 등)를 입력하지 마세요.");
+    msgBox.setIcon(QMessageBox::Warning);
+
+    // 버튼 설정
+    QPushButton *continueBtn = msgBox.addButton("계속 진행", QMessageBox::AcceptRole);
+    QPushButton *backBtn = msgBox.addButton("돌아가기", QMessageBox::RejectRole);
+    msgBox.setDefaultButton(continueBtn);
+
+    // 체크박스 (선택적)
+    QCheckBox *dontShowAgain = new QCheckBox("이 세션 동안 이 사이트에 대해 다시 표시하지 않기");
+    msgBox.setCheckBox(dontShowAgain);
+
+    // 다이얼로그 표시
+    msgBox.exec();
+
+    if (msgBox.clickedButton() == continueBtn) {
+        // 체크박스 선택 시 도메인 저장
+        if (dontShowAgain->isChecked()) {
+            QString host = url.host();
+            ignoredDomains_.insert(host);
+            qDebug() << "BrowserWindow: 경고 무시 도메인 추가 -" << host;
+
+            // 최대 100개 제한 (메모리 관리)
+            if (ignoredDomains_.size() > 100) {
+                qWarning() << "BrowserWindow: 경고 무시 도메인 목록 초과 (100개 제한)";
+                // 가장 오래된 항목 제거 (QSet은 순서 없음 → 임의 제거)
+                ignoredDomains_.erase(ignoredDomains_.begin());
+            }
+        }
+        return true;  // 계속 진행
+    } else {
+        // 돌아가기
+        webView_->goBack();
+        return false;
+    }
 }
 
 } // namespace webosbrowser

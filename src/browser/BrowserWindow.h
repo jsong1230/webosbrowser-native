@@ -9,6 +9,8 @@
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QStackedLayout>
+#include <QSet>
+#include <QTimer>
 
 namespace webosbrowser {
 
@@ -120,6 +122,25 @@ private slots:
      */
     void onHomeRequested();
 
+    /**
+     * @brief HTTP 경고 다이얼로그 표시 (디바운싱 후 호출)
+     */
+    void onWarningTimerTimeout();
+
+private:
+    /**
+     * @brief HTTP 경고 필요 여부 체크 및 타이머 시작
+     * @param url 체크할 URL
+     */
+    void checkHttpWarning(const QUrl &url);
+
+    /**
+     * @brief 보안 경고 다이얼로그 표시
+     * @param url 경고 대상 URL
+     * @return true면 계속 진행, false면 돌아가기
+     */
+    bool showSecurityWarningDialog(const QUrl &url);
+
 private:
     // UI 컴포넌트
     QWidget *centralWidget_;         ///< 중앙 위젯
@@ -144,6 +165,11 @@ private:
     // 현재 페이지 정보
     QString currentUrl_;             ///< 현재 URL
     QString currentTitle_;           ///< 현재 페이지 제목
+
+    // 보안 관련 상태
+    QSet<QString> ignoredDomains_;   ///< 경고 무시 도메인 목록 (세션 단위)
+    QTimer *warningTimer_;           ///< 경고 디바운싱 타이머 (500ms)
+    QUrl pendingUrl_;                ///< 경고 대기 중인 URL
 };
 
 } // namespace webosbrowser
