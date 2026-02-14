@@ -6,6 +6,93 @@
 
 ---
 
+## [0.3.0] - 2026-02-14
+
+### F-07: 북마크 관리 (Bookmark Management) Phase 1~3 완료
+
+#### Added (새로 추가됨)
+
+- **데이터 모델**
+  - `src/models/Bookmark.h`: Bookmark, BookmarkFolder 구조체
+  - JSON 직렬화/역직렬화 지원
+  - 유효성 검증 메서드
+
+- **StorageService (webOS LS2 API 래퍼)**
+  - `src/services/StorageService.h/.cpp`: 데이터 영속 저장
+  - `initDatabase()`: 데이터베이스 초기화
+  - `putData()`, `findData()`, `getData()`, `deleteData()`: CRUD 작업
+  - `generateUuid()`: UUID 생성
+  - 비동기 API (std::function 콜백)
+  - 현재는 시뮬레이션 (QTimer), 향후 luna-service2 연동 필요
+
+- **BookmarkService (북마크 비즈니스 로직)**
+  - `src/services/BookmarkService.h/.cpp`: 북마크 관리
+  - 북마크 CRUD: getAllBookmarks, getBookmarksByFolder, addBookmark, updateBookmark, deleteBookmark
+  - 폴더 관리: getAllFolders, addFolder, updateFolder, deleteFolder (하위 북마크 포함)
+  - 검색: searchBookmarks (제목, URL 부분 일치)
+  - incrementVisitCount: 방문 횟수 증가
+  - 시그널: bookmarkAdded, bookmarkUpdated, bookmarkDeleted, folderAdded, folderUpdated, folderDeleted
+  - 메모리 캐시 (QVector) 사용
+
+- **BookmarkPanel (북마크 관리 패널 UI)**
+  - `src/ui/BookmarkPanel.h/.cpp`: 북마크 목록 및 관리 UI
+  - QListWidget 기반 북마크 목록
+  - 검색 기능 (QLineEdit)
+  - 액션 버튼 (추가, 편집, 삭제, 새 폴더)
+  - 리모컨 키 이벤트 처리 (keyPressEvent: Escape, Enter, 방향키)
+  - 토스트 메시지 (QLabel, QTimer)
+
+- **BookmarkDialog (북마크 추가/편집 다이얼로그)**
+  - 제목, URL, 폴더 선택, 설명 입력
+  - 편집 모드 시 URL 읽기 전용
+  - QComboBox로 폴더 선택
+
+- **FolderDialog (폴더 추가/편집 다이얼로그)**
+  - 폴더 이름 입력
+  - 간단한 입력 폼
+
+- **NavigationBar 북마크 버튼**
+  - bookmarkButton_ (★ 아이콘)
+  - bookmarkButtonClicked() 시그널
+  - 포커스 순서 업데이트 (Back → Forward → Reload → Home → Bookmark)
+
+- **BrowserWindow 통합**
+  - StorageService, BookmarkService 초기화
+  - BookmarkPanel 생성 (우측 고정, 600px 너비)
+  - 북마크 버튼 클릭 시 패널 토글
+  - 북마크 선택 시 WebView 페이지 로드
+  - 현재 페이지 정보 동기화 (URL, 제목)
+
+#### Changed (변경됨)
+
+- **CMakeLists.txt**
+  - src/models/Bookmark.h 추가
+
+- **BrowserWindow**
+  - storageService_, bookmarkService_, bookmarkPanel_ 멤버 추가
+  - currentUrl_, currentTitle_ 멤버 추가
+  - onBookmarkButtonClicked(), onBookmarkSelected() 슬롯 추가
+
+- **NavigationBar**
+  - bookmarkButton_ 추가
+  - setupUI(), setupConnections(), setupFocusOrder() 업데이트
+
+#### Technical Notes
+
+- **Qt Widgets 기반**: QListWidget, QDialog, QPushButton 등 사용
+- **리모컨 지원**: QKeyEvent를 통한 방향키, 백 버튼 처리
+- **스타일**: Qt StyleSheet (QSS) 적용 (어두운 배경, 포커스 표시)
+- **비동기 처리**: std::function 콜백 기반
+- **메모리 관리**: 스마트 포인터 사용 (QScopedPointer, QObject 부모-자식 관계)
+
+#### Known Issues
+
+- **LS2 API 시뮬레이션**: 실제 webOS 환경에서 luna-service2 C API 연동 필요
+- **폴더 UI 미완성**: 폴더 아이콘, 브레드크럼 네비게이션 미구현 (Phase 4 예정)
+- **컬러 버튼 미매핑**: 리모컨 컬러 버튼 이벤트 처리 미구현 (Phase 5 예정)
+
+---
+
 ## [0.2.0] - 2026-02-14
 
 ### F-02: 웹뷰 통합 (WebView Integration) 완료

@@ -1,5 +1,131 @@
 # 개발 진행 로그
 
+## [2026-02-14] F-07: 북마크 관리 (Bookmark Management)
+
+### 상태
+🚧 **진행 중** (Phase 1~3 완료, Phase 4~7 진행 예정)
+
+### 실행 모드
+**단독 개발** (cpp-dev)
+
+### 문서 상태
+- 요구사항 분석서: ✅ `docs/specs/bookmark-management/requirements.md`
+- 기술 설계서: ✅ `docs/specs/bookmark-management/design.md`
+- 구현 계획서: ✅ `docs/specs/bookmark-management/plan.md`
+- API 스펙: ❌ 해당 없음 (C++ 컴포넌트)
+- DB 설계서: ✅ StorageService (webOS LS2 API 래퍼)
+- 컴포넌트 문서: ✅ 소스 코드 주석 완료
+
+### 설계 대비 변경사항
+
+#### 1. 데이터 저장소
+- **설계서**: JavaScript IndexedDB 사용
+- **구현**: webOS LS2 API 래퍼 (StorageService) - 현재는 시뮬레이션
+- **이유**: C++/Qt 환경이므로 webOS 네이티브 데이터베이스 서비스 사용 (DB8)
+- **향후**: 실제 webOS 환경에서 luna-service2 C API 연동 필요
+
+#### 2. UI 프레임워크
+- **설계서**: React/Enact (Moonstone UI)
+- **구현**: Qt Widgets (QListWidget, QDialog, QPushButton 등)
+- **이유**: C++/Qt 네이티브 앱이므로 Qt GUI 프레임워크 사용
+- **리모컨 지원**: QKeyEvent를 통한 방향키, 백 버튼 처리
+
+#### 3. 캐시 전략
+- **추가**: 메모리 캐시 사용 (QVector<Bookmark>, QVector<BookmarkFolder>)
+- **이유**: LS2 API 비동기 호출 최소화, 빠른 조회 성능
+- **로드**: 앱 시작 시 StorageService에서 전체 데이터 로드
+
+### 구현 완료 항목
+
+#### Phase 1: 데이터 모델 + StorageService (✅ 완료)
+- `src/models/Bookmark.h`: Bookmark, BookmarkFolder 구조체
+  - JSON 직렬화/역직렬화 (toJson, fromJson)
+  - 유효성 검증 (isValid)
+- `src/services/StorageService.h/.cpp`: webOS LS2 API 래퍼
+  - initDatabase: 데이터베이스 초기화
+  - putData, findData, getData, deleteData: CRUD 작업
+  - generateUuid: UUID 생성 (QUuid 사용)
+  - 현재는 시뮬레이션 (QTimer로 비동기 모방)
+- `src/services/BookmarkService.h/.cpp`: 북마크 비즈니스 로직
+  - 북마크 CRUD: getAllBookmarks, getBookmarksByFolder, addBookmark, updateBookmark, deleteBookmark
+  - 폴더 관리: getAllFolders, addFolder, updateFolder, deleteFolder (하위 북마크 포함)
+  - 검색: searchBookmarks (제목, URL 부분 일치)
+  - incrementVisitCount: 방문 횟수 증가
+  - 시그널: bookmarkAdded, bookmarkUpdated, bookmarkDeleted, folderAdded, folderUpdated, folderDeleted
+
+#### Phase 2: BookmarkPanel UI 컴포넌트 (✅ 완료)
+- `src/ui/BookmarkPanel.h/.cpp`: 북마크 관리 패널
+  - QListWidget 기반 북마크 목록
+  - 검색 기능 (QLineEdit)
+  - 액션 버튼 (추가, 편집, 삭제, 새 폴더)
+  - 리모컨 키 이벤트 처리 (keyPressEvent)
+  - 토스트 메시지 (QLabel, QTimer)
+- `BookmarkDialog`: 북마크 추가/편집 다이얼로그
+  - 제목, URL, 폴더 선택, 설명 입력
+  - 편집 모드 시 URL 읽기 전용
+- `FolderDialog`: 폴더 추가/편집 다이얼로그
+  - 폴더 이름 입력
+- 스타일: Qt StyleSheet (QSS) 적용
+  - 어두운 배경, 포커스 표시 (3px 파란 테두리)
+  - 대화면 가독성 (폰트 20px 이상)
+
+#### Phase 3: BrowserWindow 통합 (✅ 완료)
+- `src/browser/BrowserWindow.h/.cpp`: BookmarkPanel 통합
+  - StorageService, BookmarkService 초기화
+  - BookmarkPanel 생성 (우측 고정, 600px 너비)
+  - 북마크 버튼 클릭 핸들러 (onBookmarkButtonClicked)
+  - 북마크 선택 핸들러 (onBookmarkSelected → WebView 로드)
+  - 현재 페이지 정보 동기화 (URL, 제목)
+- `src/ui/NavigationBar.h/.cpp`: 북마크 버튼 추가
+  - bookmarkButton_ (★ 아이콘)
+  - bookmarkButtonClicked() 시그널
+  - 포커스 순서 업데이트
+
+#### CMakeLists.txt 업데이트 (✅ 완료)
+- src/models/Bookmark.h 추가
+
+### 미완료 항목 (Phase 4~7)
+
+#### Phase 4: 폴더 UI 통합 (⏳ 예정)
+- 폴더 항목 표시 (폴더 아이콘 📁)
+- 폴더 클릭 시 하위 북마크 표시
+- 브레드크럼 네비게이션 (루트 > 폴더)
+- 방향키 좌/우로 폴더 탐색
+
+#### Phase 5: 리모컨 키 매핑 최적화 (⏳ 예정)
+- 컬러 버튼 매핑 (빨강: 추가, 파랑: 편집, 노랑: 삭제, 초록: 새 폴더)
+- 옵션 버튼으로 컨텍스트 메뉴 열기
+- 포커스 표시 강화
+
+#### Phase 6: 테스트 작성 (⏳ 예정)
+- 단위 테스트 (BookmarkService)
+- 통합 테스트 (BookmarkPanel)
+- 회귀 테스트 (프로젝터 실제 환경)
+
+#### Phase 7: 코드 리뷰 + 문서화 (⏳ 예정)
+- 코드 리뷰 (코딩 컨벤션 검증)
+- 컴포넌트 문서 작성
+- CHANGELOG.md 업데이트
+
+### 기술적 이슈
+
+#### 1. webOS LS2 API 시뮬레이션
+- **현재**: QTimer로 비동기 동작 모방
+- **향후**: 실제 webOS 환경에서 luna-service2 C API 연동 필요
+- **참고**: webOS Native API 문서 (com.webos.service.db)
+
+#### 2. Qt WebEngine vs webOS WebView
+- **현재**: QWebEngineView 사용 (표준 Qt)
+- **향후**: webOS 전용 WebView API로 교체 필요 (webOSWebView)
+
+### 다음 단계
+1. Phase 4: 폴더 UI 통합 (폴더 아이콘, 브레드크럼)
+2. Phase 5: 리모컨 키 매핑 최적화 (컬러 버튼, 옵션 버튼)
+3. Phase 6: 테스트 작성
+4. Phase 7: 코드 리뷰 + 문서화
+
+---
+
 ## [2026-02-14] F-02: 웹뷰 통합 (WebView Integration)
 
 ### 상태
