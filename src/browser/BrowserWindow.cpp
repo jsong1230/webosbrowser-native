@@ -9,6 +9,10 @@
 #include "../ui/URLBar.h"
 #include "../ui/NavigationBar.h"
 #include "../ui/LoadingIndicator.h"
+#include "../ui/HistoryPanel.h"
+#include "../services/StorageService.h"
+#include "../services/HistoryService.h"
+#include "../utils/Logger.h"
 #include <QDebug>
 #include <QApplication>
 #include <QScreen>
@@ -26,9 +30,27 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     , loadingIndicator_(new LoadingIndicator(centralWidget_))
     , webView_(new WebView(centralWidget_))
     , statusLabel_(new QLabel("준비", this))
+    , historyPanel_(nullptr)
     , tabManager_(new TabManager(this))
+    , storageService_(new StorageService(this))
+    , historyService_(nullptr)
 {
     qDebug() << "BrowserWindow: 생성 중...";
+
+    // 스토리지 서비스 초기화
+    if (!storageService_->initialize()) {
+        Logger::error("BrowserWindow: StorageService 초기화 실패");
+    }
+
+    // 히스토리 서비스 초기화
+    historyService_ = new HistoryService(storageService_, this);
+
+    // 히스토리 패널 생성 (오버레이)
+    historyPanel_ = new HistoryPanel(historyService_, this);
+    historyPanel_->setGeometry(
+        width() - 600, 0,  // 우측 정렬
+        600, height()
+    );
 
     setupUI();
     setupConnections();
@@ -152,7 +174,51 @@ void BrowserWindow::setupConnections() {
         qDebug() << "BrowserWindow: 로딩 타임아웃";
     });
 
+    // WebView 로딩 완료 → 히스토리 자동 기록
+    connect(webView_, &WebView::loadFinished, this, &BrowserWindow::onPageLoadFinished);
+
+    // NavigationBar 히스토리 버튼 → 히스토리 패널 열기
+    // TODO: NavigationBar에 historyButtonClicked 시그널 추가 필요
+    // connect(navigationBar_, &NavigationBar::historyButtonClicked, this, &BrowserWindow::onHistoryButtonClicked);
+
+    // HistoryPanel 시그널 연결
+    if (historyPanel_) {
+        connect(historyPanel_, &HistoryPanel::historySelected, this, &BrowserWindow::onHistorySelected);
+    }
+
     qDebug() << "BrowserWindow: 시그널/슬롯 연결 완료";
+}
+
+void BrowserWindow::onPageLoadFinished(bool success) {
+    if (!success || !historyService_) {
+        return;
+    }
+
+    // 페이지 로딩 성공 시 히스토리 자동 기록
+    QString url = webView_->url().toString();
+    QString title = webView_->title();
+
+    if (url.isEmpty()) {
+        return;
+    }
+
+    // 히스토리 기록
+    historyService_->recordVisit(url, title);
+    Logger::info(QString("히스토리 자동 기록: %1").arg(url));
+}
+
+void BrowserWindow::onHistoryButtonClicked() {
+    if (historyPanel_) {
+        historyPanel_->togglePanel();
+    }
+}
+
+void BrowserWindow::onHistorySelected(const QString &url, const QString &title) {
+    Q_UNUSED(title)
+
+    // 히스토리에서 선택한 URL로 페이지 로드
+    webView_->load(url);
+    Logger::info(QString("히스토리에서 페이지 열기: %1").arg(url));
 }
 
 } // namespace webosbrowser

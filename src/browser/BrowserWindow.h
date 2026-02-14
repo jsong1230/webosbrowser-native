@@ -17,6 +17,9 @@ class URLBar;
 class NavigationBar;
 class LoadingIndicator;
 class TabManager;
+class StorageService;
+class HistoryService;
+class HistoryPanel;
 
 /**
  * @class BrowserWindow
@@ -55,6 +58,25 @@ private:
      */
     void setupConnections();
 
+private slots:
+    /**
+     * @brief 페이지 로딩 완료 시 히스토리 자동 기록
+     * @param success 로딩 성공 여부
+     */
+    void onPageLoadFinished(bool success);
+
+    /**
+     * @brief 히스토리 버튼 클릭 처리
+     */
+    void onHistoryButtonClicked();
+
+    /**
+     * @brief 히스토리 선택 처리 (페이지 열기)
+     * @param url 선택한 URL
+     * @param title 페이지 제목
+     */
+    void onHistorySelected(const QString &url, const QString &title);
+
 private:
     // UI 컴포넌트
     QWidget *centralWidget_;         ///< 중앙 위젯
@@ -64,9 +86,12 @@ private:
     LoadingIndicator *loadingIndicator_;  ///< 로딩 인디케이터
     WebView *webView_;               ///< 웹뷰 컴포넌트
     QLabel *statusLabel_;            ///< 상태 라벨 (하단)
+    HistoryPanel *historyPanel_;     ///< 히스토리 패널 (오버레이)
 
     // 서비스
     TabManager *tabManager_;         ///< 탭 관리자
+    StorageService *storageService_; ///< 스토리지 서비스
+    HistoryService *historyService_; ///< 히스토리 서비스
 };
 
 } // namespace webosbrowser

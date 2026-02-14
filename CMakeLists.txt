@@ -30,11 +30,13 @@ set(SOURCES
     src/ui/NavigationBar.cpp
     src/ui/LoadingIndicator.cpp
     src/ui/BookmarkPanel.cpp
+    src/ui/HistoryPanel.cpp
     src/services/BookmarkService.cpp
     src/services/HistoryService.cpp
     src/services/StorageService.cpp
     src/utils/Logger.cpp
     src/utils/URLValidator.cpp
+    src/utils/DateFormatter.cpp
 )
 
 # 헤더 파일 목록
@@ -46,11 +48,13 @@ set(HEADERS
     src/ui/NavigationBar.h
     src/ui/LoadingIndicator.h
     src/ui/BookmarkPanel.h
+    src/ui/HistoryPanel.h
     src/services/BookmarkService.h
     src/services/HistoryService.h
     src/services/StorageService.h
     src/utils/Logger.h
     src/utils/URLValidator.h
+    src/utils/DateFormatter.h
 )
 
 # 실행 파일 생성
