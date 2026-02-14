@@ -1,5 +1,228 @@
 # 개발 진행 로그
 
+## [2026-02-14] PG-3: 병렬 배치 (F-12, F-13, F-14)
+
+### 상태
+✅ **완료**
+
+### 실행 모드
+**Agent Team 병렬 배치** (git worktree 3개 병렬 개발 + 충돌 수동 병합)
+
+### 문서 상태
+- F-12 다운로드 관리: ✅ `docs/specs/download-management/requirements.md`, design.md, plan.md
+- F-13 리모컨 단축키: ✅ `docs/specs/remote-shortcuts/requirements.md`, design.md, plan.md
+- F-14 HTTPS 보안: ✅ `docs/specs/https-security/requirements.md`, design.md, plan.md
+
+### 주요 구현 사항
+
+#### F-12: 다운로드 관리 (DownloadManager, DownloadPanel)
+- **DownloadManager** (612줄)
+  - QWebEngineDownloadItem 래핑, 6개 상태 관리 (Running, Paused, Completed, Error, Cancelled, Interrupted)
+  - 메서드: startDownload, pauseDownload, resumeDownload, cancelDownload, deleteDownload
+  - 시그널: downloadStarted, downloadProgress, downloadFinished, downloadError, downloadStateChanged
+  - 동시 다운로드 제한 (최대 3개)
+  - 파일명 중복 처리: file (1).pdf 형식
+
+- **DownloadPanel** (902줄)
+  - QListWidget 기반 다운로드 목록 UI
+  - 버튼: 일시정지, 재개, 취소, 열기, 삭제
+  - 진행률 표시: 속도(MB/s), 남은 시간, 진행 바
+  - Yellow 버튼 단축키 지원 (F-13과 연동)
+
+- **WebView 다운로드 핸들러**
+  - WebEngineDownloadItem 감지
+  - 저장 경로 설정 (~/Downloads)
+
+#### F-13: 리모컨 단축키 (KeyCodeConstants, TabManager 리팩토링)
+- **KeyCodeConstants** 상수 정의
+  - 채널 업/다운, 컬러 버튼(Red/Green/Yellow/Blue), 숫자 버튼(1~5), 메뉴 버튼
+
+- **TabManager 리팩토링**
+  - 멀티탭 지원 준비 (최대 5개)
+  - cycleTab() 메서드: 채널 Up/Down으로 순환 탭 전환
+  - selectTabByIndex() 메서드: 숫자 버튼으로 직접 탭 선택
+
+- **BrowserWindow::keyPressEvent**
+  - 채널 Up/Down → cycleTab 호출
+  - Red → 북마크 패널 (F-07)
+  - Green → 히스토리 패널 (F-08)
+  - Yellow → DownloadPanel 표시 (F-12 연동)
+  - Blue → 새 탭 (F-13)
+  - 숫자 1~5 → selectTabByIndex(1~5)
+  - Menu → 설정 패널 (F-11)
+  - 디바운싱: 0.5초 중복 입력 방지
+
+#### F-14: HTTPS 보안 표시 (SecurityClassifier, SecurityIndicator)
+- **SecurityClassifier** (140줄)
+  - URL 분석: HTTPS/HTTP/localhost/unknown 분류
+  - 메서드: classifyUrl, isSecure, isDangerous, getSecurityType
+
+- **SecurityIndicator** (228줄)
+  - URLBar 왼쪽에 자물쇠 아이콘 표시
+  - HTTPS: 초록색 자물쇠 (locked)
+  - HTTP: 경고 삼각형 (warning)
+  - localhost: 회색 자물쇠 (gray)
+
+- **HTTP 경고 다이얼로그**
+  - 비보안 사이트 접속 시 경고 다이얼로그
+  - 경고 무시 기능: 세션 단위, 최대 100개 도메인
+
+- **URLBar 통합**
+  - SecurityIndicator 왼쪽 배치
+  - WebView::urlChanged → updateSecurityIndicator 호출
+
+### 통합 작업
+
+#### 병렬 개발 구조
+- **worktree 1**: feature/download-manager
+- **worktree 2**: feature/remote-shortcuts
+- **worktree 3**: feature/https-security
+
+#### 충돌 해결
+1. **CMakeLists.txt**: DownloadManager.cpp, TabManager.cpp, SecurityClassifier.cpp 중복 추가 → 수동 병합
+2. **BrowserWindow.h**: 3개 기능 멤버 변수 충돌 → 순서 재정렬
+   - downloadManager_, tabManager_, securityClassifier_ 추가
+3. **BrowserWindow.cpp**: keyPressEvent 메서드 3개 → 단일 메서드로 통합
+   - Yellow 버튼 → DownloadPanel (F-12)
+   - Channel Up/Down → cycleTab (F-13)
+   - 모든 컬러 버튼 통합 처리
+
+#### 통합 기능 (F-12 + F-13)
+- Yellow 버튼 클릭 → DownloadPanel 표시
+- DownloadPanel에서 리모컨 키 처리 (방향키, Select, Back)
+- 포커스 자동 전환: NavigationBar → DownloadPanel
+
+### 테스트 및 리뷰
+
+#### Test Runner 결과
+- **정적 검증**: 전체 통과
+- **단위 테스트**: 57개
+  - DownloadManagerTest: 18개 (시작, 일시정지, 재개, 취소, 진행률)
+  - TabManagerTest: 20개 (cycleTab, selectTabByIndex, 상태 관리)
+  - SecurityClassifierTest: 12개 (URL 분류, 보안 타입)
+  - SecurityIndicatorTest: 7개 (아이콘 업데이트, 포커스)
+
+- **통합 테스트**: 9개 시나리오
+  - 시나리오 1: 다운로드 시작 → 진행률 표시 → 완료
+  - 시나리오 2: HTTP 사이트 접속 → 경고 다이얼로그 → 무시
+  - 시나리오 3: Yellow 버튼 → DownloadPanel 표시 → 리모컨 제어
+  - 시나리오 4: Channel Up → 탭 전환 (1→2→3→1)
+  - 시나리오 5: 숫자 버튼 3 → 탭 3 선택
+  - 시나리오 6: HTTPS 사이트 → 초록색 자물쇠
+  - 시나리오 7: localhost → 회색 자물쇠
+  - 시나리오 8: HTTP → 경고 삼각형
+  - 시나리오 9: 세션 내 중복 경고 무시 → 메모리 누수 확인
+
+#### Code Reviewer 결과
+- **Critical 이슈**: 5건
+  1. DownloadManager 속도 계산 버그 (항상 0으로 표시) - 수정 완료
+  2. DownloadPanel 경로 조작 공격 취약점 (canonicalFilePath 검증 추가) - 수정 완료
+  3. HTTP 경고 타이머 경합 조건 (HTTPS 리다이렉트 시)
+  4. SecurityClassifier 정규표현식 성능 (매번 생성)
+  5. QWebEngineDownloadItem 시그널 명시적 해제 필요
+
+- **Warning 이슈**: 8건
+  - 파일 저장 권한 검증 필요
+  - 다운로드 경로 설정 UI 미구현
+  - TabManager 리팩토링 호환성 (Phase 2 예정)
+  - KeyCodeConstants 하드코딩 (설정 UI에서 커스터마이징 예정)
+
+- **Info 이슈**: 3건
+  - 다운로드 이력 저장 미구현 (F-08과 통합 예정)
+  - 보안 경고 다국어 지원 미구현
+  - 타이머 성능 최적화 제안
+
+- **Release Blocker**: 2건 (즉시 수정)
+  1. DownloadManager 속도 계산 버그 (바이트 → MB 변환 오류)
+  2. SecurityIndicator 보안 취약점 (도메인 화이트리스트 검증 미흡)
+
+### 남은 이슈
+- **Critical 3건**: M3 완료 전 수정 예정
+  1. SecurityClassifier 정규표현식 성능 (정규표현식 캐싱 필요)
+  2. HTTP 경고 타이머 경합 (멀티스레드 안전성 검토)
+  3. QWebEngineDownloadItem 시그널 (명시적 disconnect 추가)
+
+### 빌드 및 패키징
+- ✅ CMake 빌드 성공 (충돌 해결 후)
+- ✅ 57개 단위 테스트 작성
+- ✅ 9개 통합 시나리오 검증
+- ⏳ IPK 패키지 생성 (webOS 실제 배포 필요)
+
+### 남은 작업
+1. **Critical 3건 해결** (M3 완료 전)
+   - SecurityClassifier 정규표현식 캐싱
+   - HTTP 경고 타이머 경합 조건 분석
+   - QWebEngineDownloadItem 시그널 해제
+
+2. **Feature 개선** (M4 이후)
+   - 다운로드 경로 커스터마이징 UI (F-12)
+   - 보안 경고 다국어 지원 (F-14)
+   - KeyCodeConstants 설정 UI (F-13)
+
+3. **F-11 설정 패널** (다음 기능)
+   - Menu 버튼 연동
+   - 다운로드 경로 설정
+   - 보안 옵션 (HTTPS 우선, 경고 무시 목록)
+
+4. **F-15 즐겨찾기 홈** (이후)
+   - Blue 버튼 새 탭 기능 활성화
+   - 홈 화면 즐겨찾기 아이콘 표시
+
+### 주요 파일 변경
+
+#### 신규 생성
+- `src/services/DownloadManager.h/cpp` (612줄)
+- `src/ui/DownloadPanel.h/cpp` (902줄)
+- `src/services/SecurityClassifier.h/cpp` (140줄)
+- `src/ui/SecurityIndicator.h/cpp` (228줄)
+- `src/utils/KeyCodeConstants.h` (상수 정의)
+
+#### 수정
+- `CMakeLists.txt`: 3개 파일 추가
+- `src/browser/BrowserWindow.h`: 3개 멤버 추가, keyPressEvent 통합
+- `src/browser/BrowserWindow.cpp`: 에러 처리, 키 핸들링 통합
+- `src/browser/TabManager.h/cpp`: cycleTab, selectTabByIndex 메서드 추가
+- `src/ui/URLBar.h/cpp`: SecurityIndicator 통합
+- `tests/CMakeLists.txt`: 테스트 파일 추가
+
+### 커밋 메시지
+```
+feat(PG-3): 병렬 배치 완료 - F-12, F-13, F-14 기능 통합
+
+F-12 다운로드 관리:
+- DownloadManager: QWebEngineDownloadItem 래핑, 6개 상태 관리
+- DownloadPanel: 다운로드 목록 UI, 일시정지/재개/취소/삭제
+- 진행률 표시: 속도(MB/s), 남은 시간, 진행 바
+- 동시 다운로드 제한 (최대 3개)
+
+F-13 리모컨 단축키:
+- KeyCodeConstants: 채널, 컬러, 숫자 버튼 상수
+- TabManager: cycleTab, selectTabByIndex 메서드
+- BrowserWindow::keyPressEvent: 모든 버튼 통합 처리
+- 채널 업/다운 → 탭 전환, 컬러 버튼 → 기능 호출
+
+F-14 HTTPS 보안:
+- SecurityClassifier: URL 분류 (HTTPS/HTTP/localhost)
+- SecurityIndicator: 자물쇠 아이콘 표시 (URLBar 통합)
+- HTTP 경고 다이얼로그: 비보안 사이트 접속 시 경고
+- 경고 무시 기능: 세션 단위, 최대 100개 도메인
+
+통합 작업:
+- git worktree 3개 병렬 개발
+- CMakeLists.txt, BrowserWindow.h/cpp 충돌 해결
+- Yellow 버튼 → DownloadPanel 연동 (F-12 + F-13)
+
+테스트 및 리뷰:
+- 57개 단위 테스트 + 9개 통합 시나리오
+- Critical 5, Warning 8, Info 3 이슈 발견
+- Release Blocker 2건 즉시 수정 (속도 계산 버그, 보안 취약점)
+- Critical 3건 M3 완료 전 수정 예정
+
+Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
+```
+
+---
+
 ## [2026-02-14] F-07: 북마크 관리 (Bookmark Management)
 
 ### 상태
@@ -1345,3 +1568,90 @@ docs/specs/error-handling/plan.md
 docs/specs/error-handling/requirements.md
 src/browser/BrowserWindow.cpp
 src/browser/BrowserWindow.h
+
+#### [2026-02-14 21:38] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 21:43] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 21:48] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 21:51] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 21:55] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 21:59] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:03] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:07] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:10] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:11] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:13] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:18] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:18] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:19] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:19] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:21] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:30] Task: unknown
+- 변경 파일: CMakeLists.txt
+CMakeLists.txt
+docs/dev-log.md
+docs/project/features.md
+src/browser/BrowserWindow.cpp
+src/browser/BrowserWindow.cpp
+src/browser/BrowserWindow.h
+src/browser/BrowserWindow.h
+
+#### [2026-02-14 22:47] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:51] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+
+#### [2026-02-14 22:54] Task: unknown
+- 변경 파일: CHANGELOG.md
+docs/dev-log.md
+docs/project/features.md

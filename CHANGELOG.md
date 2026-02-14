@@ -6,6 +6,172 @@
 
 ---
 
+## [0.6.0] - 2026-02-14
+
+### PG-3: 병렬 배치 (F-12, F-13, F-14) 완료
+
+#### Added (새로 추가됨)
+
+##### F-12: 다운로드 관리 (Download Management)
+
+- **DownloadManager 클래스 (612줄)**
+  - `src/services/DownloadManager.h/cpp`: QWebEngineDownloadItem 래핑
+  - 상태 관리: Running, Paused, Completed, Error, Cancelled, Interrupted
+  - 메서드: `startDownload()`, `pauseDownload()`, `resumeDownload()`, `cancelDownload()`, `deleteDownload()`
+  - 시그널: `downloadStarted()`, `downloadProgress()`, `downloadFinished()`, `downloadError()`, `downloadStateChanged()`
+  - 동시 다운로드 제한: 최대 3개
+  - 파일명 중복 처리: file (1).pdf 형식
+
+- **DownloadPanel 컴포넌트 (902줄)**
+  - `src/ui/DownloadPanel.h/cpp`: 다운로드 목록 UI
+  - QListWidget 기반 다운로드 목록 표시
+  - 버튼: 일시정지(pause), 재개(resume), 취소(cancel), 열기(open), 삭제(remove)
+  - 진행률 표시: 속도(MB/s), 남은 시간(ETA), 진행 바(%)
+  - Yellow 버튼 단축키 지원 (F-13과 연동)
+  - 리모컨 네비게이션: 방향키로 다운로드 항목 선택, Select로 버튼 클릭
+
+- **WebView 다운로드 핸들러**
+  - WebEngineDownloadItem 감지 및 자동 저장
+  - 저장 경로 설정 (~/Downloads)
+
+##### F-13: 리모컨 단축키 (Remote Control Shortcuts)
+
+- **KeyCodeConstants 상수 정의**
+  - `src/utils/KeyCodeConstants.h`: 리모컨 키 코드 상수
+  - 채널 업/다운 (Channel Up/Down)
+  - 컬러 버튼 (Red/Green/Yellow/Blue)
+  - 숫자 버튼 (1~5)
+  - 메뉴 버튼 (Menu)
+
+- **TabManager 리팩토링**
+  - `src/browser/TabManager.h/cpp`: 멀티탭 지원 준비
+  - 메서드: `cycleTab(bool forward)`: 채널 Up/Down으로 순환 탭 전환
+  - 메서드: `selectTabByIndex(int index)`: 숫자 버튼으로 직접 탭 선택
+  - 최대 탭 개수: 5개 (제약: 화면 크기)
+
+- **BrowserWindow 키 처리**
+  - `keyPressEvent()` 통합 구현
+  - 채널 Up/Down → `cycleTab()` 호출 (활성 탭 순환)
+  - Red 버튼 → 북마크 패널 표시 (F-07)
+  - Green 버튼 → 히스토리 패널 표시 (F-08)
+  - Yellow 버튼 → DownloadPanel 표시 (F-12 연동)
+  - Blue 버튼 → 새 탭 추가 (F-13)
+  - 숫자 1~5 버튼 → `selectTabByIndex()` 호출
+  - Menu 버튼 → 설정 패널 표시 (F-11)
+  - 디바운싱: 0.5초 중복 입력 방지
+
+##### F-14: HTTPS 보안 표시 (HTTPS Security Indicator)
+
+- **SecurityClassifier 클래스 (140줄)**
+  - `src/services/SecurityClassifier.h/cpp`: URL 보안 분석
+  - 메서드: `classifyUrl(const QUrl &url)`: URL 분류
+  - 메서드: `isSecure(const QUrl &url)`: HTTPS 여부
+  - 메서드: `isDangerous(const QUrl &url)`: 위험 여부 판단
+  - 메서드: `getSecurityType(const QUrl &url)`: 보안 타입 반환
+  - 분류: Secure (HTTPS), Insecure (HTTP), Localhost, Unknown
+
+- **SecurityIndicator 컴포넌트 (228줄)**
+  - `src/ui/SecurityIndicator.h/cpp`: 보안 아이콘 표시
+  - URLBar 왼쪽에 배치
+  - HTTPS: 초록색 자물쇠 (locked)
+  - HTTP: 경고 삼각형 (warning)
+  - Localhost: 회색 자물쇠 (gray)
+  - Unknown: 물음표 (unknown)
+  - Click → 보안 정보 표시 (향후)
+
+- **HTTP 경고 다이얼로그**
+  - 비보안 사이트 (HTTP) 접속 시 경고 표시
+  - 메시지: "이 사이트는 안전하지 않습니다 (HTTP)"
+  - 버튼: 계속(proceed), 취소(cancel)
+  - 경고 무시 기능: 세션 단위 (앱 재실행 시 리셋)
+  - 최대 100개 도메인 무시 목록 (메모리 누수 방지)
+
+- **URLBar 통합**
+  - SecurityIndicator 왼쪽 배치
+  - WebView::urlChanged → `updateSecurityIndicator()` 호출
+  - URL 변경 시 자동 업데이트
+
+#### Changed (변경됨)
+
+- **CMakeLists.txt**
+  - `src/services/DownloadManager.cpp` 추가
+  - `src/ui/DownloadPanel.cpp` 추가
+  - `src/services/SecurityClassifier.cpp` 추가
+  - `src/ui/SecurityIndicator.cpp` 추가
+
+- **BrowserWindow 클래스**
+  - `DownloadManager *downloadManager_` 멤버 추가
+  - `DownloadPanel *downloadPanel_` 멤버 추가
+  - `SecurityClassifier *securityClassifier_` 멤버 추가
+  - `keyPressEvent()` 메서드: 3개 기능 통합 처리
+  - 다운로드 시작 시 DownloadPanel 자동 표시
+
+- **TabManager 클래스**
+  - `cycleTab(bool forward)` 메서드 추가
+  - `selectTabByIndex(int index)` 메서드 추가
+  - 최대 탭 개수 제약 (5개)
+
+- **URLBar 클래스**
+  - SecurityIndicator 통합
+  - `updateSecurityIndicator()` 메서드 추가
+
+#### Improved (개선됨)
+
+- **다운로드 관리**
+  - 동시 다운로드 제한으로 네트워크 안정성 향상
+  - 진행률 표시로 사용자 경험 개선
+  - 일시정지/재개 기능으로 유연한 다운로드 관리
+
+- **리모컨 단축키**
+  - 채널 업/다운으로 직관적 탭 전환
+  - 숫자 버튼으로 빠른 탭 접근
+  - 컬러 버튼으로 주요 기능 빠른 접근
+
+- **보안 표시**
+  - HTTPS/HTTP 시각적 구분 (자물쇠 아이콘)
+  - HTTP 사이트 경고로 사용자 보안 의식 강화
+  - 경고 무시로 반복 경고 방지
+
+#### Test (테스트)
+
+- **단위 테스트**: 57개
+  - DownloadManagerTest: 18개 (시작, 일시정지, 재개, 취소, 진행률)
+  - TabManagerTest: 20개 (cycleTab, selectTabByIndex, 상태 관리)
+  - SecurityClassifierTest: 12개 (URL 분류, 보안 타입)
+  - SecurityIndicatorTest: 7개 (아이콘 업데이트, 클릭 이벤트)
+
+- **통합 시나리오**: 9개
+  1. 다운로드 시작 → 진행률 표시 → 완료
+  2. HTTP 사이트 접속 → 경고 다이얼로그 → 무시
+  3. Yellow 버튼 → DownloadPanel 표시 → 리모컨 제어
+  4. Channel Up → 탭 전환 (1→2→3→1)
+  5. 숫자 버튼 3 → 탭 3 선택
+  6. HTTPS 사이트 → 초록색 자물쇠
+  7. Localhost → 회색 자물쇠
+  8. HTTP → 경고 삼각형
+  9. 세션 내 중복 경고 무시 → 메모리 누수 확인
+
+- **코드 리뷰**: Critical 5, Warning 8, Info 3
+  - Release Blocker 2건 즉시 수정:
+    1. DownloadManager 속도 계산 버그 (바이트 → MB 변환 오류)
+    2. SecurityIndicator 도메인 화이트리스트 검증 미흡
+  - Critical 3건 M3 완료 전 수정 예정:
+    1. SecurityClassifier 정규표현식 성능 (캐싱 필요)
+    2. HTTP 경고 타이머 경합 (멀티스레드 안전)
+    3. QWebEngineDownloadItem 시그널 (명시적 disconnect)
+
+#### Notes
+
+- **병렬 개발**: git worktree 3개 (download-manager, remote-shortcuts, https-security)
+- **충돌 해결**: CMakeLists.txt, BrowserWindow.h/cpp 수동 병합
+- **기능 연동**: Yellow 버튼 → DownloadPanel (F-12 + F-13 통합)
+- **향후 개선**:
+  - F-11 설정 패널: 다운로드 경로, 보안 옵션 커스터마이징
+  - F-15 즐겨찾기 홈: Blue 버튼 새 탭 기능 활성화
+  - Critical 3건: M3 완료 전 수정
+
+---
+
 ## [0.5.0] - 2026-02-14
 
 ### F-10: 에러 처리 (Error Handling) 완료
