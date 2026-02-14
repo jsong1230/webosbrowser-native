@@ -9,6 +9,8 @@
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QStackedLayout>
+#include <QMap>
+#include <QKeyEvent>
 
 namespace webosbrowser {
 
@@ -51,6 +53,13 @@ public:
     BrowserWindow(const BrowserWindow&) = delete;
     BrowserWindow& operator=(const BrowserWindow&) = delete;
 
+protected:
+    /**
+     * @brief 리모컨 키 이벤트 처리 (오버라이드)
+     * @param event 키 이벤트
+     */
+    void keyPressEvent(QKeyEvent *event) override;
+
 private:
     /**
      * @brief UI 초기화
@@ -61,6 +70,43 @@ private:
      * @brief 시그널/슬롯 연결
      */
     void setupConnections();
+
+    /**
+     * @brief 디바운스 체크 (0.5초 이내 중복 입력 방지)
+     * @param keyCode 키 코드
+     * @return true이면 중복 입력 (무시), false이면 처리 허용
+     */
+    bool shouldDebounce(int keyCode);
+
+    /**
+     * @brief 채널 버튼 처리 (탭 전환)
+     * @param keyCode Qt::Key_ChannelUp 또는 Qt::Key_ChannelDown
+     */
+    void handleChannelButton(int keyCode);
+
+    /**
+     * @brief 컬러 버튼 처리 (패널 열기, 새 탭)
+     * @param keyCode Qt::Key_Red, Green, Yellow, Blue
+     */
+    void handleColorButton(int keyCode);
+
+    /**
+     * @brief 숫자 버튼 처리 (직접 탭 선택)
+     * @param keyCode Qt::Key_1 ~ Qt::Key_5
+     */
+    void handleNumberButton(int keyCode);
+
+    /**
+     * @brief 설정 버튼 처리
+     * @param keyCode Qt::Key_Menu
+     */
+    void handleMenuButton(int keyCode);
+
+    /**
+     * @brief 재생 버튼 처리 (M3 이후)
+     * @param keyCode Play, Pause, FastForward, Rewind
+     */
+    void handlePlaybackButton(int keyCode);
 
 private slots:
     /**
@@ -144,6 +190,16 @@ private:
     // 현재 페이지 정보
     QString currentUrl_;             ///< 현재 URL
     QString currentTitle_;           ///< 현재 페이지 제목
+
+    // 리모컨 단축키 관리
+    QMap<int, qint64> lastKeyPressTime_;  ///< 키별 마지막 입력 시각 (ms)
+    static constexpr int DEBOUNCE_MS = 500;  ///< 디바운스 지속 시간 (0.5초)
+
+    // 자동 스크롤 (M3 이후)
+    // QTimer *autoScrollTimer_;  ///< 자동 스크롤 타이머
+    // bool isAutoScrolling_;     ///< 자동 스크롤 중 여부
+    // static constexpr int AUTO_SCROLL_INTERVAL_MS = 10;  ///< 스크롤 간격 (10ms)
+    // static constexpr int AUTO_SCROLL_STEP_PX = 5;       ///< 스크롤 단계 (5px)
 };
 
 } // namespace webosbrowser

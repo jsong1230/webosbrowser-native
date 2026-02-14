@@ -60,6 +60,7 @@ set(HEADERS
     src/utils/Logger.h
     src/utils/URLValidator.h
     src/utils/DateFormatter.h
+    src/utils/KeyCodeConstants.h
 )
 
 # 실행 파일 생성
