@@ -883,3 +883,166 @@ src/browser/BrowserWindow.h
 src/browser/TabManager.cpp
 src/browser/TabManager.h
 tests/CMakeLists.txt
+
+#### [2026-02-14 18:14] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-14 18:20] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/requirements.md
+
+#### [2026-02-14 18:32] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/requirements.md
+
+#### [2026-02-14 18:41] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+
+#### [2026-02-14 18:52] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/requirements.md
+
+#### [2026-02-14 18:55] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/requirements.md
+
+#### [2026-02-14 19:05] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/plan.md
+docs/specs/history-management/requirements.md
+
+#### [2026-02-14 19:09] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/plan.md
+docs/specs/history-management/requirements.md
+docs/specs/search-engine-integration/requirements.md
+
+#### [2026-02-14 19:16] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/plan.md
+docs/specs/history-management/requirements.md
+docs/specs/search-engine-integration/design.md
+docs/specs/search-engine-integration/requirements.md
+
+#### [2026-02-14 19:22] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/plan.md
+docs/specs/history-management/requirements.md
+docs/specs/search-engine-integration/design.md
+docs/specs/search-engine-integration/plan.md
+docs/specs/search-engine-integration/requirements.md
+
+#### [2026-02-14 19:22] Task: unknown
+- 변경 파일: docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/plan.md
+docs/specs/history-management/requirements.md
+docs/specs/search-engine-integration/design.md
+docs/specs/search-engine-integration/plan.md
+docs/specs/search-engine-integration/requirements.md
+
+#### [2026-02-14 19:27] Task: unknown
+- 변경 파일: .gitignore
+docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/plan.md
+docs/specs/history-management/requirements.md
+docs/specs/search-engine-integration/design.md
+docs/specs/search-engine-integration/plan.md
+
+#### [2026-02-14 19:34] Task: unknown
+- 변경 파일: .gitignore
+docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/plan.md
+docs/specs/history-management/requirements.md
+docs/specs/search-engine-integration/design.md
+docs/specs/search-engine-integration/plan.md
+
+#### [2026-02-14 19:34] Task: unknown
+- 변경 파일: .gitignore
+docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/plan.md
+docs/specs/history-management/requirements.md
+docs/specs/search-engine-integration/design.md
+docs/specs/search-engine-integration/plan.md
+
+#### [2026-02-14 19:35] Task: unknown
+- 변경 파일: .gitignore
+docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/plan.md
+docs/specs/history-management/requirements.md
+docs/specs/search-engine-integration/design.md
+docs/specs/search-engine-integration/plan.md
+
+#### [2026-02-14 19:35] Task: unknown
+- 변경 파일: .gitignore
+docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/plan.md
+docs/specs/history-management/requirements.md
+docs/specs/search-engine-integration/design.md
+docs/specs/search-engine-integration/plan.md
+
+#### [2026-02-14 19:35] Task: unknown
+- 변경 파일: .gitignore
+docs/dev-log.md
+docs/project/features.md
+docs/specs/bookmark-management/design.md
+docs/specs/bookmark-management/plan.md
+docs/specs/bookmark-management/requirements.md
+docs/specs/history-management/plan.md
+docs/specs/history-management/requirements.md
+docs/specs/search-engine-integration/design.md
+docs/specs/search-engine-integration/plan.md
