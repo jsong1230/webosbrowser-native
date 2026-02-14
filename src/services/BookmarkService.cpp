@@ -8,12 +8,10 @@
 #include "../utils/Logger.h"
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QUuid>
 #include <algorithm>
 
 namespace webosbrowser {
-
-const QString BookmarkService::BOOKMARKS_KIND = "com.jsong.webosbrowser:1.bookmarks";
-const QString BookmarkService::FOLDERS_KIND = "com.jsong.webosbrowser:1.folders";
 
 BookmarkService::BookmarkService(StorageService* storageService, QObject *parent)
     : QObject(parent),
@@ -28,39 +26,25 @@ BookmarkService::~BookmarkService() {
 void BookmarkService::loadCache() {
     Logger::info("[BookmarkService] 캐시 로드 시작");
 
-    // 북마크 로드
-    QJsonObject bookmarkQuery;
-    bookmarkQuery["from"] = BOOKMARKS_KIND;
+    // 북마크 및 폴더 로드 (모두 DataKind::Bookmark 사용)
+    QJsonArray results = m_storageService->findAllData(DataKind::Bookmark);
+    m_bookmarksCache.clear();
+    m_foldersCache.clear();
 
-    m_storageService->findData(BOOKMARKS_KIND, bookmarkQuery, [this](bool success, const QJsonArray& results) {
-        if (success) {
-            m_bookmarksCache.clear();
-            for (const QJsonValue& value : results) {
-                Bookmark bookmark = Bookmark::fromJson(value.toObject());
-                m_bookmarksCache.append(bookmark);
-            }
-            Logger::info(QString("[BookmarkService] 북마크 캐시 로드 완료: %1개").arg(m_bookmarksCache.size()));
+    for (const QJsonValue& value : results) {
+        QJsonObject obj = value.toObject();
+        // isFolder 필드로 북마크와 폴더 구분
+        if (obj.value("isFolder").toBool(false)) {
+            BookmarkFolder folder = BookmarkFolder::fromJson(obj);
+            m_foldersCache.append(folder);
         } else {
-            Logger::error("[BookmarkService] 북마크 캐시 로드 실패");
+            Bookmark bookmark = Bookmark::fromJson(obj);
+            m_bookmarksCache.append(bookmark);
         }
-    });
+    }
 
-    // 폴더 로드
-    QJsonObject folderQuery;
-    folderQuery["from"] = FOLDERS_KIND;
-
-    m_storageService->findData(FOLDERS_KIND, folderQuery, [this](bool success, const QJsonArray& results) {
-        if (success) {
-            m_foldersCache.clear();
-            for (const QJsonValue& value : results) {
-                BookmarkFolder folder = BookmarkFolder::fromJson(value.toObject());
-                m_foldersCache.append(folder);
-            }
-            Logger::info(QString("[BookmarkService] 폴더 캐시 로드 완료: %1개").arg(m_foldersCache.size()));
-        } else {
-            Logger::error("[BookmarkService] 폴더 캐시 로드 실패");
-        }
-    });
+    Logger::info(QString("[BookmarkService] 캐시 로드 완료: 북마크 %1개, 폴더 %2개")
+        .arg(m_bookmarksCache.size()).arg(m_foldersCache.size()));
 }
 
 void BookmarkService::getAllBookmarks(std::function<void(bool, const QVector<Bookmark>&)> callback) {
@@ -121,7 +105,7 @@ void BookmarkService::addBookmark(const Bookmark& bookmark, std::function<void(b
 
     // 북마크 객체 생성
     Bookmark newBookmark = bookmark;
-    newBookmark.id = StorageService::generateUuid();
+    newBookmark.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     newBookmark.createdAt = QDateTime::currentDateTime();
     newBookmark.updatedAt = QDateTime::currentDateTime();
     newBookmark.visitCount = 0;
@@ -134,23 +118,21 @@ void BookmarkService::addBookmark(const Bookmark& bookmark, std::function<void(b
         return;
     }
 
-    // StorageService에 저장
-    QJsonArray data;
-    data.append(newBookmark.toJson());
+    // StorageService에 저장 (동기)
+    QJsonObject data = newBookmark.toJson();
+    bool success = m_storageService->putData(DataKind::Bookmark, newBookmark.id, data);
 
-    m_storageService->putData(BOOKMARKS_KIND, data, [this, newBookmark, callback](bool success, const QJsonObject&) {
-        if (success) {
-            // 캐시에 추가
-            m_bookmarksCache.append(newBookmark);
-            Logger::info(QString("[BookmarkService] 북마크 추가 성공: id=%1").arg(newBookmark.id));
-            emit bookmarkAdded(newBookmark);
-            callback(true, newBookmark, "");
-        } else {
-            Logger::error("[BookmarkService] 북마크 추가 실패");
-            emit errorOccurred("북마크 추가 실패");
-            callback(false, Bookmark(), "북마크 추가 실패");
-        }
-    });
+    if (success) {
+        // 캐시에 추가
+        m_bookmarksCache.append(newBookmark);
+        Logger::info(QString("[BookmarkService] 북마크 추가 성공: id=%1").arg(newBookmark.id));
+        emit bookmarkAdded(newBookmark);
+        callback(true, newBookmark, "");
+    } else {
+        Logger::error("[BookmarkService] 북마크 추가 실패");
+        emit errorOccurred("북마크 추가 실패");
+        callback(false, Bookmark(), "북마크 추가 실패");
+    }
 }
 
 void BookmarkService::updateBookmark(const QString& id, const Bookmark& updates, std::function<void(bool)> callback) {
@@ -176,21 +158,19 @@ void BookmarkService::updateBookmark(const QString& id, const Bookmark& updates,
     }
     bookmark->updatedAt = QDateTime::currentDateTime();
 
-    // StorageService에 저장
-    QJsonArray data;
-    data.append(bookmark->toJson());
+    // StorageService에 저장 (동기)
+    QJsonObject data = bookmark->toJson();
+    bool success = m_storageService->putData(DataKind::Bookmark, id, data);
 
-    m_storageService->putData(BOOKMARKS_KIND, data, [this, id, callback](bool success, const QJsonObject&) {
-        if (success) {
-            Logger::info(QString("[BookmarkService] 북마크 수정 성공: id=%1").arg(id));
-            emit bookmarkUpdated(id);
-            callback(true);
-        } else {
-            Logger::error("[BookmarkService] 북마크 수정 실패");
-            emit errorOccurred("북마크 수정 실패");
-            callback(false);
-        }
-    });
+    if (success) {
+        Logger::info(QString("[BookmarkService] 북마크 수정 성공: id=%1").arg(id));
+        emit bookmarkUpdated(id);
+        callback(true);
+    } else {
+        Logger::error("[BookmarkService] 북마크 수정 실패");
+        emit errorOccurred("북마크 수정 실패");
+        callback(false);
+    }
 }
 
 void BookmarkService::deleteBookmark(const QString& id, std::function<void(bool)> callback) {
@@ -210,21 +190,18 @@ void BookmarkService::deleteBookmark(const QString& id, std::function<void(bool)
 
     m_bookmarksCache.erase(it, m_bookmarksCache.end());
 
-    // StorageService에서 삭제
-    QStringList ids;
-    ids.append(id);
+    // StorageService에서 삭제 (동기, 단일 ID)
+    bool success = m_storageService->deleteData(DataKind::Bookmark, id);
 
-    m_storageService->deleteData(BOOKMARKS_KIND, ids, [this, id, callback](bool success) {
-        if (success) {
-            Logger::info(QString("[BookmarkService] 북마크 삭제 성공: id=%1").arg(id));
-            emit bookmarkDeleted(id);
-            callback(true);
-        } else {
-            Logger::error("[BookmarkService] 북마크 삭제 실패");
-            emit errorOccurred("북마크 삭제 실패");
-            callback(false);
-        }
-    });
+    if (success) {
+        Logger::info(QString("[BookmarkService] 북마크 삭제 성공: id=%1").arg(id));
+        emit bookmarkDeleted(id);
+        callback(true);
+    } else {
+        Logger::error("[BookmarkService] 북마크 삭제 실패");
+        emit errorOccurred("북마크 삭제 실패");
+        callback(false);
+    }
 }
 
 void BookmarkService::incrementVisitCount(const QString& id, std::function<void(bool)> callback) {
@@ -240,13 +217,10 @@ void BookmarkService::incrementVisitCount(const QString& id, std::function<void(
     bookmark->visitCount++;
     bookmark->updatedAt = QDateTime::currentDateTime();
 
-    // StorageService에 저장
-    QJsonArray data;
-    data.append(bookmark->toJson());
-
-    m_storageService->putData(BOOKMARKS_KIND, data, [callback](bool success, const QJsonObject&) {
-        callback(success);
-    });
+    // StorageService에 저장 (동기)
+    QJsonObject data = bookmark->toJson();
+    bool success = m_storageService->putData(DataKind::Bookmark, id, data);
+    callback(success);
 }
 
 void BookmarkService::getAllFolders(std::function<void(bool, const QVector<BookmarkFolder>&)> callback) {
@@ -272,7 +246,7 @@ void BookmarkService::addFolder(const BookmarkFolder& folder, std::function<void
 
     // 폴더 객체 생성
     BookmarkFolder newFolder = folder;
-    newFolder.id = StorageService::generateUuid();
+    newFolder.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     newFolder.createdAt = QDateTime::currentDateTime();
 
     // 유효성 검증
@@ -283,23 +257,21 @@ void BookmarkService::addFolder(const BookmarkFolder& folder, std::function<void
         return;
     }
 
-    // StorageService에 저장
-    QJsonArray data;
-    data.append(newFolder.toJson());
+    // StorageService에 저장 (동기, DataKind::Bookmark 사용)
+    QJsonObject data = newFolder.toJson();
+    bool success = m_storageService->putData(DataKind::Bookmark, newFolder.id, data);
 
-    m_storageService->putData(FOLDERS_KIND, data, [this, newFolder, callback](bool success, const QJsonObject&) {
-        if (success) {
-            // 캐시에 추가
-            m_foldersCache.append(newFolder);
-            Logger::info(QString("[BookmarkService] 폴더 추가 성공: id=%1").arg(newFolder.id));
-            emit folderAdded(newFolder);
-            callback(true, newFolder);
-        } else {
-            Logger::error("[BookmarkService] 폴더 추가 실패");
-            emit errorOccurred("폴더 추가 실패");
-            callback(false, BookmarkFolder());
-        }
-    });
+    if (success) {
+        // 캐시에 추가
+        m_foldersCache.append(newFolder);
+        Logger::info(QString("[BookmarkService] 폴더 추가 성공: id=%1").arg(newFolder.id));
+        emit folderAdded(newFolder);
+        callback(true, newFolder);
+    } else {
+        Logger::error("[BookmarkService] 폴더 추가 실패");
+        emit errorOccurred("폴더 추가 실패");
+        callback(false, BookmarkFolder());
+    }
 }
 
 void BookmarkService::updateFolder(const QString& id, const QString& newName, std::function<void(bool)> callback) {
@@ -315,21 +287,19 @@ void BookmarkService::updateFolder(const QString& id, const QString& newName, st
 
     folder->name = newName;
 
-    // StorageService에 저장
-    QJsonArray data;
-    data.append(folder->toJson());
+    // StorageService에 저장 (동기, DataKind::Bookmark 사용)
+    QJsonObject data = folder->toJson();
+    bool success = m_storageService->putData(DataKind::Bookmark, id, data);
 
-    m_storageService->putData(FOLDERS_KIND, data, [this, id, callback](bool success, const QJsonObject&) {
-        if (success) {
-            Logger::info(QString("[BookmarkService] 폴더 수정 성공: id=%1").arg(id));
-            emit folderUpdated(id);
-            callback(true);
-        } else {
-            Logger::error("[BookmarkService] 폴더 수정 실패");
-            emit errorOccurred("폴더 수정 실패");
-            callback(false);
-        }
-    });
+    if (success) {
+        Logger::info(QString("[BookmarkService] 폴더 수정 성공: id=%1").arg(id));
+        emit folderUpdated(id);
+        callback(true);
+    } else {
+        Logger::error("[BookmarkService] 폴더 수정 실패");
+        emit errorOccurred("폴더 수정 실패");
+        callback(false);
+    }
 }
 
 void BookmarkService::deleteFolder(const QString& id, std::function<void(bool, int)> callback) {
@@ -365,43 +335,37 @@ void BookmarkService::deleteFolder(const QString& id, std::function<void(bool, i
         m_bookmarksCache.end()
     );
 
-    // StorageService에서 폴더 삭제
-    QStringList folderIds;
-    folderIds.append(id);
+    // StorageService에서 폴더 삭제 (동기)
+    bool folderDeleteSuccess = m_storageService->deleteData(DataKind::Bookmark, id);
+    if (!folderDeleteSuccess) {
+        Logger::error("[BookmarkService] 폴더 삭제 실패");
+        emit errorOccurred("폴더 삭제 실패");
+        callback(false, 0);
+        return;
+    }
 
-    m_storageService->deleteData(FOLDERS_KIND, folderIds, [this, id, bookmarksInFolder, callback](bool success) {
-        if (!success) {
-            Logger::error("[BookmarkService] 폴더 삭제 실패");
-            emit errorOccurred("폴더 삭제 실패");
-            callback(false, 0);
-            return;
-        }
-
-        // StorageService에서 북마크 삭제
-        QStringList bookmarkIds;
-        for (const Bookmark& bookmark : bookmarksInFolder) {
-            bookmarkIds.append(bookmark.id);
-        }
-
-        if (!bookmarkIds.isEmpty()) {
-            m_storageService->deleteData(BOOKMARKS_KIND, bookmarkIds, [this, id, bookmarksInFolder, callback](bool success) {
-                if (success) {
-                    Logger::info(QString("[BookmarkService] 폴더 삭제 성공: id=%1, 삭제된 북마크=%2개")
-                        .arg(id).arg(bookmarksInFolder.size()));
-                    emit folderDeleted(id);
-                    callback(true, bookmarksInFolder.size());
-                } else {
-                    Logger::error("[BookmarkService] 북마크 삭제 실패");
-                    emit errorOccurred("북마크 삭제 실패");
-                    callback(false, 0);
-                }
-            });
+    // StorageService에서 북마크 삭제 (동기, 반복문으로)
+    int deletedCount = 0;
+    bool bookmarkDeleteSuccess = true;
+    for (const Bookmark& bookmark : bookmarksInFolder) {
+        if (m_storageService->deleteData(DataKind::Bookmark, bookmark.id)) {
+            deletedCount++;
         } else {
-            Logger::info(QString("[BookmarkService] 폴더 삭제 성공: id=%1 (북마크 없음)").arg(id));
-            emit folderDeleted(id);
-            callback(true, 0);
+            bookmarkDeleteSuccess = false;
+            Logger::error(QString("[BookmarkService] 북마크 삭제 실패: id=%1").arg(bookmark.id));
         }
-    });
+    }
+
+    if (bookmarkDeleteSuccess || bookmarksInFolder.isEmpty()) {
+        Logger::info(QString("[BookmarkService] 폴더 삭제 성공: id=%1, 삭제된 북마크=%2개")
+            .arg(id).arg(deletedCount));
+        emit folderDeleted(id);
+        callback(true, deletedCount);
+    } else {
+        Logger::error("[BookmarkService] 일부 북마크 삭제 실패");
+        emit errorOccurred("일부 북마크 삭제 실패");
+        callback(false, deletedCount);
+    }
 }
 
 void BookmarkService::searchBookmarks(const QString& query, std::function<void(bool, const QVector<Bookmark>&)> callback) {

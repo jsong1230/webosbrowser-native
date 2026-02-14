@@ -12,13 +12,13 @@
 #include "../ui/HistoryPanel.h"
 #include "../ui/BookmarkPanel.h"
 #include "../ui/ErrorPage.h"
-#include "../ui/DownloadPanel.h"
+// #include "../ui/DownloadPanel.h"  // WebEngine 의존성으로 제외
 #include "../ui/SettingsPanel.h"
 #include "../ui/HomePage.h"
 #include "../services/StorageService.h"
 #include "../services/HistoryService.h"
 #include "../services/BookmarkService.h"
-#include "../services/DownloadManager.h"
+// #include "../services/DownloadManager.h"  // WebEngine 의존성으로 제외
 #include "../services/SettingsService.h"
 #include "../utils/Logger.h"
 #include "../utils/SecurityClassifier.h"
@@ -51,14 +51,12 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     , statusLabel_(new QLabel("준비", this))
     , bookmarkPanel_(nullptr)
     , historyPanel_(nullptr)
-    , downloadPanel_(nullptr)
     , settingsPanel_(nullptr)
     , homePage_(nullptr)
     , tabManager_(new TabManager(this))
     , storageService_(new StorageService(this))
     , bookmarkService_(nullptr)
     , historyService_(nullptr)
-    , downloadManager_(nullptr)
     , settingsService_(nullptr)
     , currentUrl_("")
     , currentTitle_("")
@@ -98,19 +96,12 @@ BrowserWindow::BrowserWindow(QWidget *parent)
         600, height()
     );
 
-    // 다운로드 관리자 생성
-    downloadManager_ = new DownloadManager(this);
-
-    // 다운로드 패널 생성
-    downloadPanel_ = new DownloadPanel(downloadManager_, this);
-    downloadPanel_->setGeometry(
-        (width() - 800) / 2, height() - 500,  // 중앙 하단
-        800, 450
-    );
-    downloadPanel_->hide();  // 초기 숨김
-
-    // WebView에 다운로드 핸들러 설정
-    webView_->setupDownloadHandler(downloadManager_);
+    // 다운로드 기능 제외 (WebEngine 의존성)
+    // downloadManager_ = new DownloadManager(this);
+    // downloadPanel_ = new DownloadPanel(downloadManager_, this);
+    // downloadPanel_->setGeometry((width() - 800) / 2, height() - 500, 800, 450);
+    // downloadPanel_->hide();
+    // webView_->setupDownloadHandler(downloadManager_);
 
     // HomePage 생성
     homePage_ = new HomePage(bookmarkService_, contentWidget_);
@@ -299,19 +290,19 @@ void BrowserWindow::setupConnections() {
         connect(historyPanel_, &HistoryPanel::historySelected, this, &BrowserWindow::onHistorySelected);
     }
 
-    // DownloadManager 시그널 연결 (F-12)
-    if (downloadManager_) {
-        connect(downloadManager_, &DownloadManager::downloadCompleted,
-                this, &BrowserWindow::onDownloadCompleted);
-    }
+    // 다운로드 기능 제외 (WebEngine 의존성)
+    // if (downloadManager_) {
+    //     connect(downloadManager_, &DownloadManager::downloadCompleted,
+    //             this, &BrowserWindow::onDownloadCompleted);
+    // }
 
     // TabManager 시그널 연결 (F-13: 리모컨 단축키)
     connect(tabManager_, &TabManager::tabSwitched, this, [this](int index, const QString& url, const QString& title) {
         // URLBar 업데이트
         urlBar_->setText(url);
 
-        // NavigationBar 상태 업데이트
-        navigationBar_->updateTitle(title);
+        // NavigationBar 상태 업데이트 (updateTitle 메서드 없음)
+        // navigationBar_->updateTitle(title);
 
         // WebView 포커스
         webView_->setFocus();
@@ -604,13 +595,13 @@ bool BrowserWindow::showSecurityWarningDialog(const QUrl &url) {
     }
 }
 
-// [F-12] 다운로드 관리 기능
-
+// [F-12] 다운로드 관리 기능 (WebEngine 의존성으로 제외)
+/*
 void BrowserWindow::showDownloadPanel()
 {
     if (downloadPanel_) {
         downloadPanel_->show();
-        downloadPanel_->raise();  // 최상단으로
+        downloadPanel_->raise();
         qDebug() << "BrowserWindow: 다운로드 패널 표시";
     }
 }
@@ -637,13 +628,9 @@ void BrowserWindow::toggleDownloadPanel()
 void BrowserWindow::onDownloadCompleted(const DownloadItem& item)
 {
     qDebug() << "BrowserWindow: 다운로드 완료 알림 -" << item.fileName;
-
-    // StatusLabel 업데이트
     statusLabel_->setText("다운로드 완료: " + item.fileName);
-
-    // 토스트 알림은 DownloadPanel에서 처리
-    // 여기서는 추가 작업 (예: 상태바 업데이트)만 수행
 }
+*/
 
 // ============================================================================
 // 리모컨 단축키 처리 (F-13)
@@ -800,14 +787,13 @@ void BrowserWindow::handleColorButton(int keyCode) {
             break;
 
         case YELLOW:
-            // 다운로드 패널 열기 (F-12 + F-13 통합)
-            if (downloadPanel_ && !downloadPanel_->isVisible()) {
-                downloadPanel_->show();
-                downloadPanel_->setFocus();
-                Logger::info("[BrowserWindow] Yellow 버튼 → 다운로드 패널 열림");
-            } else {
-                Logger::debug("[BrowserWindow] 다운로드 패널 이미 열려있음");
-            }
+            // 다운로드 기능 제외 (WebEngine 의존성)
+            // if (downloadPanel_ && !downloadPanel_->isVisible()) {
+            //     downloadPanel_->show();
+            //     downloadPanel_->setFocus();
+            //     Logger::info("[BrowserWindow] Yellow 버튼 → 다운로드 패널 열림");
+            // }
+            Logger::warning("[BrowserWindow] 다운로드 기능은 현재 빌드에서 지원되지 않습니다");
             break;
 
         case BLUE:

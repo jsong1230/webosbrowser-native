@@ -5,6 +5,7 @@
 
 #include "LoadingIndicator.h"
 #include <QVBoxLayout>
+#include <QTimer>
 #include <QDebug>
 
 namespace webosbrowser {

@@ -48,6 +48,7 @@ struct Bookmark {
         json["createdAt"] = createdAt.toString(Qt::ISODate);
         json["updatedAt"] = updatedAt.toString(Qt::ISODate);
         json["visitCount"] = visitCount;
+        json["isFolder"] = false;  // 북마크 구분용
         return json;
     }
 
@@ -104,6 +105,7 @@ struct BookmarkFolder {
         json["name"] = name;
         json["parentId"] = parentId;
         json["createdAt"] = createdAt.toString(Qt::ISODate);
+        json["isFolder"] = true;  // 폴더 구분용
         return json;
     }
 

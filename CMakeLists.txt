@@ -11,8 +11,9 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-# Qt 패키지 찾기
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets)
+# Qt 패키지 찾기 (WebEngine은 선택사항)
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt5WebEngineWidgets QUIET)
 
 # 헤더 파일 경로
 include_directories(
@@ -24,7 +25,6 @@ include_directories(
 set(SOURCES
     src/main.cpp
     src/browser/BrowserWindow.cpp
-    src/browser/WebView.cpp
     src/browser/TabManager.cpp
     src/ui/URLBar.cpp
     src/ui/NavigationBar.cpp
@@ -33,7 +33,6 @@ set(SOURCES
     src/ui/BookmarkPanel.cpp
     src/ui/HistoryPanel.cpp
     src/ui/SecurityIndicator.cpp
-    src/ui/DownloadPanel.cpp
     src/ui/SettingsPanel.cpp
     src/ui/HomePage.cpp
     src/ui/BookmarkCard.cpp
@@ -41,7 +40,6 @@ set(SOURCES
     src/services/HistoryService.cpp
     src/services/StorageService.cpp
     src/services/SearchEngine.cpp
-    src/services/DownloadManager.cpp
     src/services/SettingsService.cpp
     src/utils/Logger.cpp
     src/utils/URLValidator.cpp
@@ -61,7 +59,6 @@ set(HEADERS
     src/ui/BookmarkPanel.h
     src/ui/HistoryPanel.h
     src/ui/SecurityIndicator.h
-    src/ui/DownloadPanel.h
     src/ui/SettingsPanel.h
     src/ui/HomePage.h
     src/ui/BookmarkCard.h
@@ -70,7 +67,6 @@ set(HEADERS
     src/services/HistoryService.h
     src/services/StorageService.h
     src/services/SearchEngine.h
-    src/services/DownloadManager.h
     src/services/SettingsService.h
     src/utils/Logger.h
     src/utils/URLValidator.h
@@ -84,6 +80,17 @@ set(RESOURCES
     resources/resources.qrc
 )
 
+# WebEngine 사용 가능 여부 확인
+if(Qt5WebEngineWidgets_FOUND)
+    message(STATUS "Qt5 WebEngine found - building with WebView support")
+    list(APPEND SOURCES src/browser/WebView.cpp)
+    add_definitions(-DUSE_WEBENGINE)
+else()
+    message(WARNING "Qt5 WebEngine not found - building with WebView stub")
+    message(WARNING "WebView functionality will be limited (no actual web rendering)")
+    list(APPEND SOURCES src/browser/WebView_stub.cpp)
+endif()
+
 # 실행 파일 생성
 add_executable(webosbrowser ${SOURCES} ${HEADERS} ${RESOURCES})
 
@@ -92,8 +99,12 @@ target_link_libraries(webosbrowser
     Qt5::Core
     Qt5::Gui
     Qt5::Widgets
-    Qt5::WebEngineWidgets
 )
+
+# WebEngine 링크 (사용 가능한 경우)
+if(Qt5WebEngineWidgets_FOUND)
+    target_link_libraries(webosbrowser Qt5::WebEngineWidgets)
+endif()
 
 # 컴파일 옵션
 target_compile_options(webosbrowser PRIVATE

@@ -28,8 +28,6 @@ class BookmarkService;
 class HistoryService;
 class HistoryPanel;
 class ErrorPage;
-class DownloadManager;
-class DownloadPanel;
 class SettingsService;
 class SettingsPanel;
 class HomePage;
@@ -60,20 +58,10 @@ public:
     BrowserWindow(const BrowserWindow&) = delete;
     BrowserWindow& operator=(const BrowserWindow&) = delete;
 
-    /**
-     * @brief 다운로드 패널 표시
-     */
-    void showDownloadPanel();
-
-    /**
-     * @brief 다운로드 패널 숨김
-     */
-    void hideDownloadPanel();
-
-    /**
-     * @brief 다운로드 패널 토글
-     */
-    void toggleDownloadPanel();
+    // 다운로드 기능 제외 (WebEngine 의존성)
+    // void showDownloadPanel();
+    // void hideDownloadPanel();
+    // void toggleDownloadPanel();
 
 protected:
     /**
@@ -228,7 +216,8 @@ private slots:
      * @brief 다운로드 완료 알림
      * @param item 완료된 다운로드 항목
      */
-    void onDownloadCompleted(const DownloadItem& item);
+    // 다운로드 기능 제외 (WebEngine 의존성)
+    // void onDownloadCompleted(const DownloadItem& item);
 
 private:
     /**
@@ -268,7 +257,7 @@ private:
     QLabel *statusLabel_;            ///< 상태 라벨 (하단)
     BookmarkPanel *bookmarkPanel_;   ///< 북마크 패널
     HistoryPanel *historyPanel_;     ///< 히스토리 패널 (오버레이)
-    DownloadPanel *downloadPanel_;   ///< 다운로드 패널
+    // DownloadPanel *downloadPanel_;   ///< 다운로드 패널 (WebEngine 의존성으로 제외)
     SettingsPanel *settingsPanel_;   ///< 설정 패널 (오버레이)
     HomePage *homePage_;             ///< 홈 화면 (즐겨찾기 그리드)
 
@@ -277,7 +266,7 @@ private:
     StorageService *storageService_; ///< 스토리지 서비스
     BookmarkService *bookmarkService_; ///< 북마크 서비스
     HistoryService *historyService_; ///< 히스토리 서비스
-    DownloadManager *downloadManager_; ///< 다운로드 관리자
+    // DownloadManager *downloadManager_; ///< 다운로드 관리자 (WebEngine 의존성으로 제외)
     SettingsService *settingsService_; ///< 설정 서비스
 
     // 현재 페이지 정보

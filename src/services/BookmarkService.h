@@ -183,9 +183,6 @@ private:
     QVector<Bookmark> m_bookmarksCache;  // 북마크 캐시 (메모리)
     QVector<BookmarkFolder> m_foldersCache;  // 폴더 캐시
 
-    static const QString BOOKMARKS_KIND;  // Kind: "com.jsong.webosbrowser:1.bookmarks"
-    static const QString FOLDERS_KIND;    // Kind: "com.jsong.webosbrowser:1.folders"
-
     /**
      * @brief 캐시 로드 (앱 시작 시)
      */

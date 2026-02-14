@@ -450,4 +450,8 @@ void HistoryPanel::keyPressEvent(QKeyEvent *event) {
     QWidget::keyPressEvent(event);
 }
 
+bool HistoryPanel::isVisible() const {
+    return isVisible_;
+}
+
 } // namespace webosbrowser

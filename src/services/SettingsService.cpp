@@ -110,7 +110,7 @@ bool SettingsService::setSearchEngine(const QString &engineId) {
 bool SettingsService::setHomepage(const QString &url) {
     // URL 검증 (URLValidator 사용)
     // about: URL 허용
-    if (!url.startsWith("about:") && !URLValidator::isValid(url)) {
+    if (!url.startsWith("about:") && !URLValidator::isUrl(url)) {
         qWarning() << "[SettingsService] 유효하지 않은 URL:" << url;
         return false;
     }
