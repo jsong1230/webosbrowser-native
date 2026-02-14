@@ -14,7 +14,7 @@
 | F-06 | 탭 관리 시스템 | 탭 상태 관리 (생성/전환/닫기) + 탭바 UI | Must | F-02 | - | TabManager 서비스, TabBar 컴포넌트 | M2 | ✅ 완료 |
 | F-07 | 북마크 관리 | 북마크 CRUD + 폴더 구조 + UI (LS2 API 저장) | Must | F-01 | PG-2 | BookmarkManager 서비스, BookmarkPanel 컴포넌트 | M2 | 🔄 진행중 |
 | F-08 | 히스토리 관리 | 방문 기록 저장/조회/삭제 + UI (LS2 API 저장) | Must | F-02 | PG-2 | HistoryManager 서비스, HistoryPanel 컴포넌트 | M2 | 🔄 진행중 |
-| F-09 | 검색 엔진 통합 | Google, Naver 검색 엔진 선택 및 검색 쿼리 생성 | Must | F-03 | PG-2 | SearchEngine 서비스, URLBar 컴포넌트 | M2 | 🔄 진행중 |
+| F-09 | 검색 엔진 통합 | Google, Naver 검색 엔진 선택 및 검색 쿼리 생성 | Must | F-03 | PG-2 | SearchEngine 서비스, URLBar 컴포넌트 | M2 | ✅ 완료 (2026-02-14) |
 | F-10 | 에러 처리 | 연결 실패, 404, 렌더링 오류 시 에러 화면 | Must | F-02 | - | ErrorPage 컴포넌트, WebView 컴포넌트 | M2 | ⏳ 대기 |
 | F-11 | 설정 화면 | 검색 엔진, 홈페이지, 테마, 브라우징 데이터 삭제 설정 | Must | F-09 | - | SettingsPanel 컴포넌트, Settings 서비스 | M3 | ⏳ 대기 |
 | F-12 | 다운로드 관리 | 다운로드 시작/진행/완료 관리 + UI | Should | F-02 | PG-3 | DownloadManager 서비스, DownloadPanel 컴포넌트 | M3 | ⏳ 대기 |

@@ -24,6 +24,8 @@ set(CMAKE_AUTORCC ON)
 # 단위 테스트
 set(UNIT_TESTS
     unit/URLValidatorTest.cpp
+    unit/URLValidatorTest_SearchQuery.cpp
+    unit/SearchEngineTest.cpp
     unit/URLBarTest.cpp
     unit/TabManagerTest.cpp
 )
@@ -51,6 +53,7 @@ add_executable(webosbrowser_tests
     ../src/services/BookmarkService.cpp
     ../src/services/HistoryService.cpp
     ../src/services/StorageService.cpp
+    ../src/services/SearchEngine.cpp
     ../src/utils/Logger.cpp
 )
 

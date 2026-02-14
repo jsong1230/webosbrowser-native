@@ -33,6 +33,7 @@ set(SOURCES
     src/services/BookmarkService.cpp
     src/services/HistoryService.cpp
     src/services/StorageService.cpp
+    src/services/SearchEngine.cpp
     src/utils/Logger.cpp
     src/utils/URLValidator.cpp
 )
@@ -49,6 +50,7 @@ set(HEADERS
     src/services/BookmarkService.h
     src/services/HistoryService.h
     src/services/StorageService.h
+    src/services/SearchEngine.h
     src/utils/Logger.h
     src/utils/URLValidator.h
 )

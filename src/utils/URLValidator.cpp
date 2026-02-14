@@ -99,4 +99,32 @@ bool URLValidator::isValidUrlFormat(const QString &input) {
     return url.isValid() && !url.host().isEmpty();
 }
 
+bool URLValidator::isSearchQuery(const QString &input) {
+    const QString trimmed = input.trimmed();
+
+    if (trimmed.isEmpty()) {
+        return false;
+    }
+
+    // 1. 프로토콜 포함 시 URL로 판단
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://") ||
+        trimmed.startsWith("ftp://")) {
+        return false;
+    }
+
+    // 2. 도메인 형식 → URL로 판단
+    if (domainPattern_.match(trimmed).hasMatch()) {
+        return false;
+    }
+
+    // 3. localhost 또는 IP 주소 → URL로 판단
+    if (trimmed.startsWith("localhost") ||
+        QRegularExpression(R"(^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})").match(trimmed).hasMatch()) {
+        return false;
+    }
+
+    // 4. 위의 모든 URL 형식에 해당하지 않으면 검색어로 간주
+    return true;
+}
+
 } // namespace webosbrowser

@@ -57,6 +57,13 @@ public:
      */
     static bool isValidUrlFormat(const QString &input);
 
+    /**
+     * @brief 검색어인지 판단
+     * @param input 사용자 입력 문자열
+     * @return true면 검색어, false면 URL로 간주
+     */
+    static bool isSearchQuery(const QString &input);
+
 private:
     // URL 패턴 정규표현식
     static const QRegularExpression urlPattern_;

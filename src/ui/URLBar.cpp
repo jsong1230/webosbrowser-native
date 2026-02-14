@@ -5,6 +5,7 @@
 
 #include "URLBar.h"
 #include "../utils/URLValidator.h"
+#include "../services/SearchEngine.h"
 #include <QDebug>
 
 namespace webosbrowser {
@@ -189,7 +190,20 @@ void URLBar::applyStyles() {
 }
 
 QUrl URLBar::validateAndCompleteUrl(const QString &input) {
-    // URLValidator를 사용하여 URL 검증 및 자동 보완
+    // 1. 검색어인지 확인 (F-09)
+    if (URLValidator::isSearchQuery(input)) {
+        qDebug() << "URLBar: 검색어로 인식 -" << input;
+        QString searchUrl = SearchEngine::buildSearchUrl(input);
+        if (!searchUrl.isEmpty()) {
+            qDebug() << "URLBar: 검색 URL 생성 -" << searchUrl;
+            return QUrl(searchUrl);
+        } else {
+            // 검색 URL 생성 실패 (빈 검색어)
+            return QUrl();
+        }
+    }
+
+    // 2. URL로 검증 및 자동 보완 (기존 F-03 로직)
     URLValidator::ValidationResult result = URLValidator::validate(input);
 
     QUrl url;
