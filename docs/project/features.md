@@ -16,7 +16,7 @@
 | F-08 | 히스토리 관리 | 방문 기록 저장/조회/삭제 + UI (LS2 API 저장) | Must | F-02 | PG-2 | HistoryManager 서비스, HistoryPanel 컴포넌트 | M2 | ✅ 완료 (2026-02-14, Phase 1-3) |
 | F-09 | 검색 엔진 통합 | Google, Naver 검색 엔진 선택 및 검색 쿼리 생성 | Must | F-03 | PG-2 | SearchEngine 서비스, URLBar 컴포넌트 | M2 | ✅ 완료 (2026-02-14) |
 | F-10 | 에러 처리 | 연결 실패, 404, 렌더링 오류 시 에러 화면 | Must | F-02 | - | ErrorPage 컴포넌트, WebView 컴포넌트 | M2 | ✅ 완료 (2026-02-14) |
-| F-11 | 설정 화면 | 검색 엔진, 홈페이지, 테마, 브라우징 데이터 삭제 설정 | Must | F-09 | - | SettingsPanel 컴포넌트, Settings 서비스 | M3 | ⏳ 대기 |
+| F-11 | 설정 화면 | 검색 엔진, 홈페이지, 테마, 브라우징 데이터 삭제 설정 | Must | F-09 | - | SettingsPanel 컴포넌트, Settings 서비스 | M3 | ✅ 완료 (2026-02-14) |
 | F-12 | 다운로드 관리 | 다운로드 시작/진행/완료 관리 + UI | Should | F-02 | PG-3 | DownloadManager 서비스, DownloadPanel 컴포넌트 | M3 | ✅ 완료 (2026-02-14, PG-3 병렬) |
 | F-13 | 리모컨 단축키 | 채널 버튼, 컬러 버튼 등으로 기능 실행 (Qt 키 이벤트) | Should | F-06, F-07 | PG-3 | KeyboardHandler 서비스 | M3 | ✅ 완료 (2026-02-14, PG-3 병렬) |
 | F-14 | HTTPS 보안 표시 | 보안 연결 상태 아이콘, 경고 다이얼로그 | Should | F-02 | PG-3 | SecurityIndicator 컴포넌트, URLBar 컴포넌트 | M3 | ✅ 완료 (2026-02-14, PG-3 병렬) |
