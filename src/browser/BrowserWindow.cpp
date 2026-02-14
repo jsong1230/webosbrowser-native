@@ -13,13 +13,16 @@
 #include "../ui/BookmarkPanel.h"
 #include "../ui/ErrorPage.h"
 #include "../ui/DownloadPanel.h"
+#include "../ui/SettingsPanel.h"
 #include "../services/StorageService.h"
 #include "../services/HistoryService.h"
 #include "../services/BookmarkService.h"
 #include "../services/DownloadManager.h"
+#include "../services/SettingsService.h"
 #include "../utils/Logger.h"
 #include "../utils/SecurityClassifier.h"
 #include "../utils/KeyCodeConstants.h"
+#include <QFile>
 #include <QDebug>
 #include <QApplication>
 #include <QScreen>
@@ -48,11 +51,13 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     , bookmarkPanel_(nullptr)
     , historyPanel_(nullptr)
     , downloadPanel_(nullptr)
+    , settingsPanel_(nullptr)
     , tabManager_(new TabManager(this))
     , storageService_(new StorageService(this))
     , bookmarkService_(nullptr)
     , historyService_(nullptr)
     , downloadManager_(nullptr)
+    , settingsService_(nullptr)
     , currentUrl_("")
     , currentTitle_("")
     , warningTimer_(new QTimer(this))
@@ -68,6 +73,10 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     if (!storageService_->initialize()) {
         Logger::error("BrowserWindow: StorageService 초기화 실패");
     }
+
+    // 설정 서비스 생성 및 로드
+    settingsService_ = new SettingsService(storageService_, this);
+    settingsService_->loadSettings();
 
     // 북마크 서비스 초기화
     bookmarkService_ = new BookmarkService(storageService_, this);
@@ -103,6 +112,13 @@ BrowserWindow::BrowserWindow(QWidget *parent)
 
     setupUI();
     setupConnections();
+
+    // 설정 패널 생성 (setupUI 이후에 생성해야 함)
+    settingsPanel_ = new SettingsPanel(settingsService_, bookmarkService_,
+                                       historyService_, this);
+
+    // 초기 테마 적용
+    applyTheme(settingsService_->theme());
 
     qDebug() << "BrowserWindow: 생성 완료";
 }
@@ -275,6 +291,16 @@ void BrowserWindow::setupConnections() {
     connect(tabManager_, &TabManager::tabClosed, this, [this](int index) {
         Logger::info(QString("[BrowserWindow] 탭 %1 닫힘").arg(index + 1));
     });
+
+    // SettingsService 시그널 연결
+    if (settingsService_) {
+        connect(settingsService_, &SettingsService::searchEngineChanged,
+                this, &BrowserWindow::onSearchEngineChanged);
+        connect(settingsService_, &SettingsService::homepageChanged,
+                this, &BrowserWindow::onHomepageChanged);
+        connect(settingsService_, &SettingsService::themeChanged,
+                this, &BrowserWindow::onThemeChanged);
+    }
 
     qDebug() << "BrowserWindow: 시그널/슬롯 연결 완료";
 }
@@ -776,22 +802,56 @@ void BrowserWindow::handleNumberButton(int keyCode) {
 void BrowserWindow::handleMenuButton(int keyCode) {
     Q_UNUSED(keyCode);
 
-    // 설정 패널 열기 (F-11 구현 시)
-    // if (settingsPanel_ && !settingsPanel_->isVisible()) {
-    //     settingsPanel_->show();
-    //     settingsPanel_->setFocus();
-    //     Logger::info("[BrowserWindow] Menu 버튼 → 설정 패널 열림");
-    // } else {
-    //     Logger::debug("[BrowserWindow] 설정 패널 이미 열려있음");
-    // }
-
-    Logger::info("[BrowserWindow] Menu 버튼 → 설정 패널 (F-11 미구현)");
+    // 설정 패널 토글
+    if (settingsPanel_) {
+        if (settingsPanel_->isVisible()) {
+            settingsPanel_->hidePanel();
+            Logger::info("[BrowserWindow] Menu 버튼 → 설정 패널 닫힘");
+        } else {
+            settingsPanel_->showPanel();
+            Logger::info("[BrowserWindow] Menu 버튼 → 설정 패널 열림");
+        }
+    }
 }
 
 void BrowserWindow::handlePlaybackButton(int keyCode) {
     // M3 이후 구현 예정
     Logger::debug(QString("[BrowserWindow] handlePlaybackButton: keyCode=%1").arg(keyCode));
     Q_UNUSED(keyCode);
+}
+
+void BrowserWindow::onSearchEngineChanged(const QString &engineId) {
+    // 검색 엔진 변경 시 처리 (필요 시)
+    Logger::info(QString("[BrowserWindow] 검색 엔진 변경: %1").arg(engineId));
+    // URLBar는 SearchEngine::getDefaultSearchEngine()을 사용하므로 별도 처리 불필요
+}
+
+void BrowserWindow::onHomepageChanged(const QString &url) {
+    // 홈페이지 변경 시 NavigationBar에 전달
+    if (navigationBar_) {
+        navigationBar_->setHomepage(url);
+        Logger::info(QString("[BrowserWindow] 홈페이지 변경: %1").arg(url));
+    }
+}
+
+void BrowserWindow::onThemeChanged(const QString &themeId) {
+    // 테마 변경 시 적용
+    applyTheme(themeId);
+    Logger::info(QString("[BrowserWindow] 테마 변경: %1").arg(themeId));
+}
+
+void BrowserWindow::applyTheme(const QString &themeId) {
+    // QSS 파일 로드
+    QString qssFilePath = QString(":/styles/%1.qss").arg(themeId);
+    QFile qssFile(qssFilePath);
+
+    if (qssFile.open(QFile::ReadOnly)) {
+        QString styleSheet = QLatin1String(qssFile.readAll());
+        qApp->setStyleSheet(styleSheet);
+        qDebug() << "[BrowserWindow] 테마 적용 완료:" << themeId;
+    } else {
+        qWarning() << "[BrowserWindow] 테마 파일 로드 실패:" << qssFilePath;
+    }
 }
 
 } // namespace webosbrowser

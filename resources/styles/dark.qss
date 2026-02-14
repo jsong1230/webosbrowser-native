@@ -1,0 +1,108 @@
+/* 다크 모드 테마 */
+
+QMainWindow {
+    background-color: #1E1E1E;
+}
+
+QWidget#NavigationBar, QWidget#URLBar {
+    background-color: #2D2D2D;
+    border-bottom: 1px solid #444444;
+}
+
+QPushButton {
+    background-color: #3C3C3C;
+    color: #FFFFFF;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-size: 14px;
+}
+
+QPushButton:hover {
+    background-color: #4A4A4A;
+}
+
+QPushButton:focus {
+    border: 2px solid #0078D7;
+    outline: none;
+}
+
+QPushButton:disabled {
+    background-color: #2D2D2D;
+    color: #888888;
+}
+
+QLineEdit {
+    background-color: #2D2D2D;
+    color: #FFFFFF;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    padding: 6px 10px;
+}
+
+QLineEdit:focus {
+    border: 2px solid #0078D7;
+}
+
+QRadioButton {
+    color: #FFFFFF;
+}
+
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+}
+
+QRadioButton::indicator:checked {
+    background-color: #0078D7;
+    border: 2px solid #0078D7;
+    border-radius: 8px;
+}
+
+QRadioButton::indicator:unchecked {
+    background-color: transparent;
+    border: 2px solid #888888;
+    border-radius: 8px;
+}
+
+QRadioButton:focus {
+    outline: 2px solid #0078D7;
+}
+
+QLabel {
+    color: #FFFFFF;
+}
+
+QListWidget {
+    background-color: #2D2D2D;
+    color: #FFFFFF;
+    border: 1px solid #444444;
+}
+
+QListWidget::item:selected {
+    background-color: #0078D7;
+}
+
+QListWidget::item:hover {
+    background-color: #3C3C3C;
+}
+
+QWidget#BookmarkPanel, QWidget#HistoryPanel, QWidget#DownloadPanel {
+    background-color: #2D2D2D;
+    border: 1px solid #444444;
+}
+
+QWidget#ErrorPage {
+    background-color: #1E1E1E;
+}
+
+/* 로딩 인디케이터 */
+QWidget#LoadingIndicator {
+    background-color: #2D2D2D;
+    border: 1px solid #0078D7;
+}
+
+/* 보안 인디케이터 */
+QWidget#SecurityIndicator {
+    background-color: transparent;
+}

@@ -18,6 +18,7 @@ NavigationBar::NavigationBar(QWidget *parent)
     , homeButton_(nullptr)
     , bookmarkButton_(nullptr)
     , webView_(nullptr)
+    , homepage_("https://www.google.com")  // 기본 홈페이지
 {
     qDebug() << "NavigationBar: 생성 중...";
 
@@ -92,10 +93,15 @@ void NavigationBar::onReloadClicked() {
 }
 
 void NavigationBar::onHomeClicked() {
-    qDebug() << "NavigationBar: 홈 버튼 클릭";
+    qDebug() << "NavigationBar: 홈 버튼 클릭 - 홈페이지:" << homepage_;
     if (webView_) {
-        webView_->load(DEFAULT_HOME_URL);
+        webView_->load(homepage_);
     }
+}
+
+void NavigationBar::setHomepage(const QString &url) {
+    homepage_ = url;
+    qDebug() << "NavigationBar: 홈페이지 설정:" << url;
 }
 
 void NavigationBar::onBookmarkClicked() {

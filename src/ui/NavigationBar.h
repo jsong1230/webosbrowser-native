@@ -46,6 +46,12 @@ public:
      */
     void setWebView(WebView *webView);
 
+    /**
+     * @brief 홈페이지 URL 설정
+     * @param url 홈페이지 URL
+     */
+    void setHomepage(const QString &url);
+
 public slots:
     /**
      * @brief 버튼 상태 업데이트 (WebView 히스토리 상태 기반)
@@ -116,7 +122,7 @@ private:
 
     // 데이터
     WebView *webView_;              ///< WebView 인스턴스 (약한 참조)
-    const QString DEFAULT_HOME_URL = "https://www.google.com";  ///< 기본 홈페이지 URL
+    QString homepage_;              ///< 홈페이지 URL (설정 가능)
 };
 
 } // namespace webosbrowser

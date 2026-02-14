@@ -30,6 +30,8 @@ class HistoryPanel;
 class ErrorPage;
 class DownloadManager;
 class DownloadPanel;
+class SettingsService;
+class SettingsPanel;
 
 /**
  * @class BrowserWindow
@@ -122,6 +124,12 @@ private:
     void handleMenuButton(int keyCode);
 
     /**
+     * @brief 테마 적용
+     * @param themeId 테마 ID ("dark" 또는 "light")
+     */
+    void applyTheme(const QString &themeId);
+
+    /**
      * @brief 재생 버튼 처리 (M3 이후)
      * @param keyCode Play, Pause, FastForward, Rewind
      */
@@ -163,6 +171,24 @@ private slots:
      * @param title 페이지 제목
      */
     void onHistorySelected(const QString& url, const QString& title);
+
+    /**
+     * @brief 검색 엔진 변경 핸들러
+     * @param engineId 새 검색 엔진 ID
+     */
+    void onSearchEngineChanged(const QString &engineId);
+
+    /**
+     * @brief 홈페이지 변경 핸들러
+     * @param url 새 홈페이지 URL
+     */
+    void onHomepageChanged(const QString &url);
+
+    /**
+     * @brief 테마 변경 핸들러
+     * @param themeId 새 테마 ID
+     */
+    void onThemeChanged(const QString &themeId);
 
     /**
      * @brief WebView 로딩 에러 핸들러
@@ -225,6 +251,7 @@ private:
     BookmarkPanel *bookmarkPanel_;   ///< 북마크 패널
     HistoryPanel *historyPanel_;     ///< 히스토리 패널 (오버레이)
     DownloadPanel *downloadPanel_;   ///< 다운로드 패널
+    SettingsPanel *settingsPanel_;   ///< 설정 패널 (오버레이)
 
     // 서비스
     TabManager *tabManager_;         ///< 탭 관리자
@@ -232,6 +259,7 @@ private:
     BookmarkService *bookmarkService_; ///< 북마크 서비스
     HistoryService *historyService_; ///< 히스토리 서비스
     DownloadManager *downloadManager_; ///< 다운로드 관리자
+    SettingsService *settingsService_; ///< 설정 서비스
 
     // 현재 페이지 정보
     QString currentUrl_;             ///< 현재 URL
