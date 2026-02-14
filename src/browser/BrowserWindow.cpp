@@ -5,6 +5,8 @@
 
 #include "BrowserWindow.h"
 #include "WebView.h"
+#include "../ui/URLBar.h"
+#include "../ui/NavigationBar.h"
 #include <QDebug>
 #include <QApplication>
 #include <QScreen>
@@ -17,6 +19,8 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     : QMainWindow(parent)
     , centralWidget_(new QWidget(this))
     , mainLayout_(new QVBoxLayout(centralWidget_))
+    , urlBar_(new URLBar(centralWidget_))
+    , navigationBar_(new NavigationBar(centralWidget_))
     , webView_(new WebView(centralWidget_))
     , statusLabel_(new QLabel("준비", this))
 {
@@ -44,8 +48,17 @@ void BrowserWindow::setupUI() {
     mainLayout_->setContentsMargins(0, 0, 0, 0);
     mainLayout_->setSpacing(0);
 
-    // WebView 추가
-    mainLayout_->addWidget(webView_);
+    // URLBar 추가 (최상단)
+    mainLayout_->addWidget(urlBar_);
+
+    // NavigationBar 추가 (URLBar 아래)
+    mainLayout_->addWidget(navigationBar_);
+
+    // WebView 추가 (중간, stretch=1로 남은 공간 모두 차지)
+    mainLayout_->addWidget(webView_, 1);
+
+    // NavigationBar와 WebView 연결
+    navigationBar_->setWebView(webView_);
 
     // 상태 바 설정
     statusLabel_->setStyleSheet(
@@ -64,6 +77,10 @@ void BrowserWindow::setupUI() {
 }
 
 void BrowserWindow::setupConnections() {
+    // URLBar → WebView 연결
+    connect(urlBar_, &URLBar::urlSubmitted, webView_,
+            static_cast<void(WebView::*)(const QUrl&)>(&WebView::load));
+
     // WebView 로딩 시작 이벤트
     connect(webView_, &WebView::loadStarted, this, [this]() {
         statusLabel_->setText("로딩 중...");
@@ -100,14 +117,16 @@ void BrowserWindow::setupConnections() {
         }
     });
 
-    // WebView URL 변경 이벤트
+    // WebView URL 변경 이벤트 (URLBar + StatusLabel 동시 업데이트)
     connect(webView_, &WebView::urlChanged, this, [this](const QUrl &url) {
+        urlBar_->setText(url.toString());
         statusLabel_->setText(url.toString());
         qDebug() << "BrowserWindow: URL 변경 -" << url.toString();
     });
 
-    // WebView 에러 이벤트
+    // WebView 에러 이벤트 (URLBar + StatusLabel 동시 업데이트)
     connect(webView_, &WebView::loadError, this, [this](const QString &errorString) {
+        urlBar_->showError(errorString);
         statusLabel_->setText("에러: " + errorString);
         qDebug() << "BrowserWindow: 로딩 에러 -" << errorString;
     });

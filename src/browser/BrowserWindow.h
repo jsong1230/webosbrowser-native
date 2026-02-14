@@ -11,8 +11,10 @@
 
 namespace webosbrowser {
 
-// Forward declaration
+// Forward declarations
 class WebView;
+class URLBar;
+class NavigationBar;
 
 /**
  * @class BrowserWindow
@@ -55,6 +57,8 @@ private:
     // UI 컴포넌트
     QWidget *centralWidget_;      ///< 중앙 위젯
     QVBoxLayout *mainLayout_;     ///< 메인 레이아웃
+    URLBar *urlBar_;              ///< URL 입력 바
+    NavigationBar *navigationBar_;///< 네비게이션 바
     WebView *webView_;            ///< 웹뷰 컴포넌트
     QLabel *statusLabel_;         ///< 상태 라벨 (하단)
 };

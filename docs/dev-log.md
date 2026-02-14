@@ -600,3 +600,12 @@ feat(F-03): URL 입력 UI - URLBar, VirtualKeyboard, URLValidator 구현 완료
 - 구현 계획: `docs/specs/url-input-ui/plan.md`
 - 테스트 보고서: `docs/test-reports/F-03-URL-Input-UI-Test-Report.md`
 - CLAUDE.md: `/Users/jsong/dev/jsong1230-github/webosbrowser-native/CLAUDE.md`
+
+#### [2026-02-14 17:07] Task: unknown
+- 변경 파일: docs/dev-log.md
+src/browser/BrowserWindow.cpp
+src/browser/BrowserWindow.h
+src/ui/URLBar.cpp
+src/ui/URLBar.h
+src/utils/URLValidator.cpp
+src/utils/URLValidator.h
