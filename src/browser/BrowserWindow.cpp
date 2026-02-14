@@ -9,9 +9,11 @@
 #include "../ui/URLBar.h"
 #include "../ui/NavigationBar.h"
 #include "../ui/LoadingIndicator.h"
+#include "../ui/HistoryPanel.h"
 #include "../ui/BookmarkPanel.h"
-#include "../services/BookmarkService.h"
 #include "../services/StorageService.h"
+#include "../services/HistoryService.h"
+#include "../services/BookmarkService.h"
 #include "../utils/Logger.h"
 #include <QDebug>
 #include <QApplication>
@@ -30,39 +32,39 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     , loadingIndicator_(new LoadingIndicator(centralWidget_))
     , webView_(new WebView(centralWidget_))
     , statusLabel_(new QLabel("준비", this))
+    , bookmarkPanel_(nullptr)
+    , historyPanel_(nullptr)
     , tabManager_(new TabManager(this))
     , storageService_(new StorageService(this))
     , bookmarkService_(nullptr)
-    , bookmarkPanel_(nullptr)
+    , historyService_(nullptr)
     , currentUrl_("")
     , currentTitle_("")
 {
     qDebug() << "BrowserWindow: 생성 중...";
 
-    // StorageService 초기화
-    storageService_->initDatabase([this](bool success) {
-        if (success) {
-            Logger::info("[BrowserWindow] 스토리지 초기화 성공");
+    // 스토리지 서비스 초기화
+    if (!storageService_->initialize()) {
+        Logger::error("BrowserWindow: StorageService 초기화 실패");
+    }
 
-            // BookmarkService 생성
-            bookmarkService_ = new BookmarkService(storageService_, this);
+    // 북마크 서비스 초기화
+    bookmarkService_ = new BookmarkService(storageService_, this);
 
-            // BookmarkPanel 생성
-            bookmarkPanel_ = new BookmarkPanel(bookmarkService_, centralWidget_);
-            bookmarkPanel_->setGeometry(1320, 0, 600, 1080);  // 우측 고정
-            bookmarkPanel_->hide();  // 초기 숨김
+    // 북마크 패널 생성
+    bookmarkPanel_ = new BookmarkPanel(bookmarkService_, centralWidget_);
+    bookmarkPanel_->setGeometry(1320, 0, 600, 1080);  // 우측 고정
+    bookmarkPanel_->hide();  // 초기 숨김
 
-            // BookmarkPanel 시그널 연결
-            connect(bookmarkPanel_, &BookmarkPanel::bookmarkSelected, this, &BrowserWindow::onBookmarkSelected);
-            connect(bookmarkPanel_, &BookmarkPanel::panelClosed, this, [this]() {
-                Logger::info("[BrowserWindow] 북마크 패널 닫힘");
-            });
+    // 히스토리 서비스 초기화
+    historyService_ = new HistoryService(storageService_, this);
 
-            Logger::info("[BrowserWindow] 북마크 서비스 초기화 완료");
-        } else {
-            Logger::error("[BrowserWindow] 스토리지 초기화 실패");
-        }
-    });
+    // 히스토리 패널 생성 (오버레이)
+    historyPanel_ = new HistoryPanel(historyService_, this);
+    historyPanel_->setGeometry(
+        width() - 600, 0,  // 우측 정렬
+        600, height()
+    );
 
     setupUI();
     setupConnections();
@@ -170,20 +172,8 @@ void BrowserWindow::setupConnections() {
     connect(webView_, &WebView::urlChanged, this, [this](const QUrl &url) {
         urlBar_->setText(url.toString());
         statusLabel_->setText(url.toString());
-        currentUrl_ = url.toString();
         qDebug() << "BrowserWindow: URL 변경 -" << url.toString();
     });
-
-    // WebView 제목 변경 시 현재 페이지 정보 업데이트
-    connect(webView_, &WebView::titleChanged, this, [this](const QString &title) {
-        currentTitle_ = title;
-        if (bookmarkPanel_) {
-            bookmarkPanel_->setCurrentPage(currentUrl_, currentTitle_);
-        }
-    });
-
-    // NavigationBar 북마크 버튼 연결
-    connect(navigationBar_, &NavigationBar::bookmarkButtonClicked, this, &BrowserWindow::onBookmarkButtonClicked);
 
     // WebView 에러 이벤트 (URLBar + StatusLabel 동시 업데이트)
     connect(webView_, &WebView::loadError, this, [this](const QString &errorString) {
@@ -198,7 +188,51 @@ void BrowserWindow::setupConnections() {
         qDebug() << "BrowserWindow: 로딩 타임아웃";
     });
 
+    // WebView 로딩 완료 → 히스토리 자동 기록
+    connect(webView_, &WebView::loadFinished, this, &BrowserWindow::onPageLoadFinished);
+
+    // NavigationBar 히스토리 버튼 → 히스토리 패널 열기
+    // TODO: NavigationBar에 historyButtonClicked 시그널 추가 필요
+    // connect(navigationBar_, &NavigationBar::historyButtonClicked, this, &BrowserWindow::onHistoryButtonClicked);
+
+    // HistoryPanel 시그널 연결
+    if (historyPanel_) {
+        connect(historyPanel_, &HistoryPanel::historySelected, this, &BrowserWindow::onHistorySelected);
+    }
+
     qDebug() << "BrowserWindow: 시그널/슬롯 연결 완료";
+}
+
+void BrowserWindow::onPageLoadFinished(bool success) {
+    if (!success || !historyService_) {
+        return;
+    }
+
+    // 페이지 로딩 성공 시 히스토리 자동 기록
+    QString url = webView_->url().toString();
+    QString title = webView_->title();
+
+    if (url.isEmpty()) {
+        return;
+    }
+
+    // 히스토리 기록
+    historyService_->recordVisit(url, title);
+    Logger::info(QString("히스토리 자동 기록: %1").arg(url));
+}
+
+void BrowserWindow::onHistoryButtonClicked() {
+    if (historyPanel_) {
+        historyPanel_->togglePanel();
+    }
+}
+
+void BrowserWindow::onHistorySelected(const QString &url, const QString &title) {
+    Q_UNUSED(title)
+
+    // 히스토리에서 선택한 URL로 페이지 로드
+    webView_->load(url);
+    Logger::info(QString("히스토리에서 페이지 열기: %1").arg(url));
 }
 
 void BrowserWindow::onBookmarkButtonClicked() {
@@ -208,27 +242,24 @@ void BrowserWindow::onBookmarkButtonClicked() {
     }
 
     Logger::info("[BrowserWindow] 북마크 버튼 클릭");
-
+    
     // 현재 페이지 정보 설정
     bookmarkPanel_->setCurrentPage(currentUrl_, currentTitle_);
-
+    
     // 패널 토글
     if (bookmarkPanel_->isVisible()) {
         bookmarkPanel_->hide();
     } else {
         bookmarkPanel_->show();
-        bookmarkPanel_->raise();  // 최상위로
+        bookmarkPanel_->raise();
     }
 }
 
 void BrowserWindow::onBookmarkSelected(const QString& url, const QString& title) {
     Logger::info(QString("[BrowserWindow] 북마크 선택: url=%1, title=%2").arg(url, title));
-
-    // 현재 페이지 정보 업데이트
+    
     currentUrl_ = url;
     currentTitle_ = title;
-
-    // WebView에서 페이지 로드
     webView_->load(QUrl(url));
 }
 

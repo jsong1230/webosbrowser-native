@@ -1009,3 +1009,15 @@ src/browser/BrowserWindow.h
 src/browser/TabManager.cpp
 src/browser/TabManager.h
 tests/CMakeLists.txt
+
+#### [2026-02-14 19:37] Task: unknown
+- 변경 파일: CMakeLists.txt
+CMakeLists.txt
+docs/dev-log.md
+src/browser/BrowserWindow.cpp
+src/browser/BrowserWindow.cpp
+src/browser/BrowserWindow.h
+src/browser/BrowserWindow.h
+src/services/StorageService.cpp
+src/services/StorageService.cpp
+src/services/StorageService.h

@@ -1,185 +1,285 @@
 /**
  * @file StorageService.cpp
- * @brief webOS LS2 API를 사용한 스토리지 서비스 구현
+ * @brief 스토리지 서비스 구현 - webOS LS2 API 래퍼
  */
 
 #include "StorageService.h"
-#include "../utils/Logger.h"
+#include "utils/Logger.h"
+#include <QDir>
+#include <QFile>
 #include <QJsonDocument>
-#include <QTimer>
+#include <QStandardPaths>
 
 namespace webosbrowser {
 
 StorageService::StorageService(QObject *parent)
-    : QObject(parent),
-      m_initialized(false) {
+    : QObject(parent)
+    , isInitialized_(false)
+{
+    // Mock 구현: 데이터 디렉토리 경로 설정
+    storageDir_ = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+
+    // 디렉토리가 없으면 생성
+    QDir dir;
+    if (!dir.exists(storageDir_)) {
+        dir.mkpath(storageDir_);
+        Logger::info(QString("스토리지 디렉토리 생성: %1").arg(storageDir_));
+    }
 }
 
 StorageService::~StorageService() {
 }
 
-void StorageService::initDatabase(std::function<void(bool)> callback) {
-    // webOS DB8 Kind 등록
-    // 실제 webOS 환경에서는 putKind API 호출 필요
-    // 현재는 시뮬레이션으로 성공 처리
+bool StorageService::initialize() {
+    if (isInitialized_) {
+        Logger::warning("StorageService가 이미 초기화되었습니다.");
+        return true;
+    }
 
-    Logger::info("[StorageService] 데이터베이스 초기화 시작");
+    // Mock 구현: 스토리지 디렉토리 확인
+    QDir dir(storageDir_);
+    if (!dir.exists()) {
+        Logger::error(QString("스토리지 디렉토리가 존재하지 않습니다: %1").arg(storageDir_));
+        return false;
+    }
 
-    // 비동기 시뮬레이션
-    QTimer::singleShot(100, this, [this, callback]() {
-        m_initialized = true;
-        Logger::info("[StorageService] 데이터베이스 초기화 완료");
-        callback(true);
-    });
+    // 실제 webOS 환경에서는 여기서 LS2 API 초기화
+    // LSError lserror;
+    // LSErrorInit(&lserror);
+    // if (!LSRegister("com.jsong.webosbrowser.native", &lsHandle_, &lserror)) {
+    //     Logger::error(QString("LS2 등록 실패: %1").arg(lserror.message));
+    //     return false;
+    // }
 
-    // 실제 webOS 환경에서의 putKind 예시:
-    /*
-    QJsonObject kindBookmarks;
-    kindBookmarks["id"] = "com.jsong.webosbrowser:1.bookmarks";
-    kindBookmarks["owner"] = "com.jsong.webosbrowser";
-    QJsonObject indexes;
-    indexes["url"] = "url";
-    indexes["folderId"] = "folderId";
-    indexes["title"] = "title";
-    kindBookmarks["indexes"] = QJsonArray::fromVariantList({
-        QJsonObject{{"name", "url"}, {"props", QJsonArray{QJsonObject{{"name", "url"}}}}},
-        QJsonObject{{"name", "folderId"}, {"props", QJsonArray{QJsonObject{{"name", "folderId"}}}}}
-    });
+    isInitialized_ = true;
+    emit initialized();
+    Logger::info("StorageService 초기화 완료 (Mock 모드)");
 
-    callLS2("luna://com.webos.service.db/", "putKind", kindBookmarks, [callback](bool success, const QJsonObject& response) {
-        callback(success);
-    });
-    */
+    return true;
 }
 
-void StorageService::putData(const QString& kind, const QJsonArray& data, std::function<void(bool, const QJsonObject&)> callback) {
-    if (!m_initialized) {
-        Logger::error("[StorageService] 데이터베이스가 초기화되지 않았습니다");
-        emit errorOccurred("데이터베이스가 초기화되지 않았습니다");
-        callback(false, QJsonObject());
-        return;
+bool StorageService::putData(DataKind kind, const QString &id, const QJsonObject &data) {
+    if (!isInitialized_) {
+        Logger::error("StorageService가 초기화되지 않았습니다.");
+        return false;
     }
 
-    Logger::info(QString("[StorageService] 데이터 저장: kind=%1, count=%2").arg(kind).arg(data.size()));
+    // Mock 구현: JSON 파일에서 데이터 로드
+    QJsonArray allData = loadFromFile(kind);
 
-    QJsonObject payload;
-    payload["objects"] = data;
+    // 기존 항목 찾기 (ID 일치)
+    bool found = false;
+    for (int i = 0; i < allData.size(); ++i) {
+        QJsonObject item = allData[i].toObject();
+        if (item["id"].toString() == id) {
+            // 업데이트
+            allData[i] = data;
+            found = true;
+            break;
+        }
+    }
 
-    // 실제 webOS 환경에서는 LS2 API 호출
-    // 현재는 시뮬레이션으로 성공 처리
-    QTimer::singleShot(50, this, [callback, data]() {
-        QJsonObject response;
-        response["returnValue"] = true;
-        response["results"] = data;
-        callback(true, response);
-    });
+    // 새 항목 추가
+    if (!found) {
+        allData.append(data);
+    }
 
-    // 실제 webOS 환경:
-    // callLS2("luna://com.webos.service.db/", "put", payload, callback);
+    // 파일에 저장
+    bool success = saveToFile(kind, allData);
+    if (success) {
+        emit dataSaved(kind, id);
+        Logger::debug(QString("데이터 저장 완료: Kind=%1, ID=%2").arg(kindToString(kind)).arg(id));
+    } else {
+        emit storageError(QString("데이터 저장 실패: Kind=%1, ID=%2").arg(kindToString(kind)).arg(id));
+    }
+
+    return success;
 }
 
-void StorageService::findData(const QString& kind, const QJsonObject& query, std::function<void(bool, const QJsonArray&)> callback) {
-    if (!m_initialized) {
-        Logger::error("[StorageService] 데이터베이스가 초기화되지 않았습니다");
-        emit errorOccurred("데이터베이스가 초기화되지 않았습니다");
-        callback(false, QJsonArray());
-        return;
+QJsonObject StorageService::getData(DataKind kind, const QString &id) const {
+    if (!isInitialized_) {
+        Logger::error("StorageService가 초기화되지 않았습니다.");
+        return QJsonObject();
     }
 
-    Logger::info(QString("[StorageService] 데이터 조회: kind=%1").arg(kind));
+    QJsonArray allData = loadFromFile(kind);
 
-    QJsonObject payload;
-    payload["query"] = query;
-    if (query.isEmpty()) {
-        // 기본 쿼리: 모든 데이터 조회
-        QJsonObject defaultQuery;
-        defaultQuery["from"] = kind;
-        payload["query"] = defaultQuery;
+    for (const QJsonValue &value : allData) {
+        QJsonObject item = value.toObject();
+        if (item["id"].toString() == id) {
+            return item;
+        }
     }
 
-    // 실제 webOS 환경에서는 LS2 API 호출
-    // 현재는 빈 배열 반환 (테스트용)
-    QTimer::singleShot(50, this, [callback]() {
-        QJsonArray results;
-        callback(true, results);
-    });
-
-    // 실제 webOS 환경:
-    // callLS2("luna://com.webos.service.db/", "find", payload, [callback](bool success, const QJsonObject& response) {
-    //     QJsonArray results = response["results"].toArray();
-    //     callback(success, results);
-    // });
+    return QJsonObject(); // 없으면 빈 객체 반환
 }
 
-void StorageService::getData(const QString& kind, const QString& id, std::function<void(bool, const QJsonObject&)> callback) {
-    if (!m_initialized) {
-        Logger::error("[StorageService] 데이터베이스가 초기화되지 않았습니다");
-        emit errorOccurred("데이터베이스가 초기화되지 않았습니다");
-        callback(false, QJsonObject());
-        return;
+QJsonArray StorageService::findAllData(DataKind kind) const {
+    if (!isInitialized_) {
+        Logger::error("StorageService가 초기화되지 않았습니다.");
+        return QJsonArray();
     }
 
-    Logger::info(QString("[StorageService] 단일 데이터 조회: kind=%1, id=%2").arg(kind, id));
-
-    QJsonObject query;
-    QJsonArray ids;
-    ids.append(id);
-    query["ids"] = ids;
-
-    // 실제 webOS 환경에서는 LS2 API 호출
-    QTimer::singleShot(50, this, [callback]() {
-        callback(false, QJsonObject()); // 테스트용 실패 반환
-    });
-
-    // 실제 webOS 환경:
-    // callLS2("luna://com.webos.service.db/", "get", query, callback);
+    return loadFromFile(kind);
 }
 
-void StorageService::deleteData(const QString& kind, const QStringList& ids, std::function<void(bool)> callback) {
-    if (!m_initialized) {
-        Logger::error("[StorageService] 데이터베이스가 초기화되지 않았습니다");
-        emit errorOccurred("데이터베이스가 초기화되지 않았습니다");
-        callback(false);
-        return;
+QJsonArray StorageService::findData(DataKind kind, const QJsonObject &query) const {
+    if (!isInitialized_) {
+        Logger::error("StorageService가 초기화되지 않았습니다.");
+        return QJsonArray();
     }
 
-    Logger::info(QString("[StorageService] 데이터 삭제: kind=%1, count=%2").arg(kind).arg(ids.size()));
+    // Mock 구현: 간단한 필터링 (실제로는 LS2 쿼리 사용)
+    QJsonArray allData = loadFromFile(kind);
+    QJsonArray result;
 
-    QJsonArray idsArray;
-    for (const QString& id : ids) {
-        idsArray.append(id);
+    for (const QJsonValue &value : allData) {
+        QJsonObject item = value.toObject();
+        bool match = true;
+
+        // 쿼리 조건 체크
+        for (const QString &key : query.keys()) {
+            if (item[key] != query[key]) {
+                match = false;
+                break;
+            }
+        }
+
+        if (match) {
+            result.append(item);
+        }
     }
 
-    QJsonObject payload;
-    payload["ids"] = idsArray;
-
-    // 실제 webOS 환경에서는 LS2 API 호출
-    QTimer::singleShot(50, this, [callback]() {
-        callback(true);
-    });
-
-    // 실제 webOS 환경:
-    // callLS2("luna://com.webos.service.db/", "del", payload, [callback](bool success, const QJsonObject&) {
-    //     callback(success);
-    // });
+    return result;
 }
 
-void StorageService::callLS2(const QString& service, const QString& method, const QJsonObject& payload, std::function<void(bool, const QJsonObject&)> callback) {
-    // 실제 webOS 환경에서는 luna-service2 C API 사용
-    // LSCall() 또는 Qt webOS 확장 API 사용
-    // 현재는 시뮬레이션
+bool StorageService::deleteData(DataKind kind, const QString &id) {
+    if (!isInitialized_) {
+        Logger::error("StorageService가 초기화되지 않았습니다.");
+        return false;
+    }
 
-    QString uri = service + method;
-    Logger::debug(QString("[StorageService] LS2 호출: uri=%1, payload=%2")
-        .arg(uri)
-        .arg(QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact))));
+    QJsonArray allData = loadFromFile(kind);
+    QJsonArray newData;
 
-    // 비동기 시뮬레이션
-    QTimer::singleShot(100, this, [callback]() {
-        QJsonObject response;
-        response["returnValue"] = true;
-        callback(true, response);
-    });
+    bool found = false;
+    for (const QJsonValue &value : allData) {
+        QJsonObject item = value.toObject();
+        if (item["id"].toString() == id) {
+            found = true;
+            continue; // 삭제할 항목은 제외
+        }
+        newData.append(item);
+    }
+
+    if (!found) {
+        Logger::warning(QString("삭제할 데이터를 찾을 수 없습니다: Kind=%1, ID=%2").arg(kindToString(kind)).arg(id));
+        return false;
+    }
+
+    bool success = saveToFile(kind, newData);
+    if (success) {
+        emit dataDeleted(kind, id);
+        Logger::debug(QString("데이터 삭제 완료: Kind=%1, ID=%2").arg(kindToString(kind)).arg(id));
+    }
+
+    return success;
+}
+
+int StorageService::deleteAllData(DataKind kind) {
+    if (!isInitialized_) {
+        Logger::error("StorageService가 초기화되지 않았습니다.");
+        return 0;
+    }
+
+    int count = countData(kind);
+
+    QJsonArray emptyArray;
+    bool success = saveToFile(kind, emptyArray);
+
+    if (success) {
+        Logger::info(QString("전체 데이터 삭제 완료: Kind=%1, Count=%2").arg(kindToString(kind)).arg(count));
+    }
+
+    return success ? count : 0;
+}
+
+int StorageService::countData(DataKind kind) const {
+    if (!isInitialized_) {
+        Logger::error("StorageService가 초기화되지 않았습니다.");
+        return 0;
+    }
+
+    QJsonArray allData = loadFromFile(kind);
+    return allData.size();
+}
+
+QString StorageService::kindToString(DataKind kind) const {
+    switch (kind) {
+        case DataKind::Bookmark:
+            return "bookmark";
+        case DataKind::History:
+            return "history";
+        case DataKind::Settings:
+            return "settings";
+        default:
+            return "unknown";
+    }
+}
+
+QJsonObject StorageService::callLS2(const QString &method, const QJsonObject &params) {
+    // Mock 구현: 실제로는 LSCall() 사용
+    Q_UNUSED(method)
+    Q_UNUSED(params)
+
+    Logger::warning("LS2 API 호출 (Mock): 실제 webOS 환경에서만 동작합니다.");
+    return QJsonObject();
+}
+
+QString StorageService::getStorageFilePath(DataKind kind) const {
+    QString fileName = QString("%1.json").arg(kindToString(kind));
+    return QDir(storageDir_).filePath(fileName);
+}
+
+QJsonArray StorageService::loadFromFile(DataKind kind) const {
+    QString filePath = getStorageFilePath(kind);
+    QFile file(filePath);
+
+    if (!file.exists()) {
+        return QJsonArray(); // 파일이 없으면 빈 배열 반환
+    }
+
+    if (!file.open(QIODevice::ReadOnly)) {
+        Logger::error(QString("파일 읽기 실패: %1").arg(filePath));
+        return QJsonArray();
+    }
+
+    QByteArray data = file.readAll();
+    file.close();
+
+    QJsonDocument doc = QJsonDocument::fromJson(data);
+    if (!doc.isArray()) {
+        Logger::error(QString("JSON 파싱 실패: %1").arg(filePath));
+        return QJsonArray();
+    }
+
+    return doc.array();
+}
+
+bool StorageService::saveToFile(DataKind kind, const QJsonArray &data) {
+    QString filePath = getStorageFilePath(kind);
+    QFile file(filePath);
+
+    if (!file.open(QIODevice::WriteOnly)) {
+        Logger::error(QString("파일 쓰기 실패: %1").arg(filePath));
+        return false;
+    }
+
+    QJsonDocument doc(data);
+    file.write(doc.toJson(QJsonDocument::Indented));
+    file.close();
+
+    return true;
 }
 
 } // namespace webosbrowser

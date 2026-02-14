@@ -1,0 +1,63 @@
+cmake_minimum_required(VERSION 3.16)
+project(webosbrowser-tests VERSION 0.1.0 LANGUAGES CXX)
+
+# C++ 표준 설정
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Qt 자동 처리 활성화
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+
+# Qt 패키지 찾기
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets Test)
+
+# Google Test - FetchContent로 자동 다운로드
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.zip
+)
+FetchContent_MakeAvailable(googletest)
+
+# 테스트 포함 디렉토리
+include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+
+# 단위 테스트 - 독립 테스트 (WebView 없이)
+set(UNIT_TESTS_STANDALONE
+    unit/TabManagerTest.cpp
+)
+
+# TabManager만 테스트할 수 있는 구현 파일
+set(STANDALONE_SOURCES
+    ../src/browser/TabManager.cpp
+    ../src/utils/Logger.cpp
+)
+
+# 독립 단위 테스트 실행 파일
+add_executable(webosbrowser_tests_standalone
+    ${UNIT_TESTS_STANDALONE}
+    ${STANDALONE_SOURCES}
+)
+
+# Qt 라이브러리 링크
+target_link_libraries(webosbrowser_tests_standalone
+    Qt5::Core
+    Qt5::Gui
+    Qt5::Widgets
+    Qt5::Test
+    gtest
+    gtest_main
+)
+
+# 테스트 등록
+enable_testing()
+add_test(NAME webosbrowser_tests_standalone COMMAND webosbrowser_tests_standalone)
+
+# 출력 디렉토리
+set_target_properties(webosbrowser_tests_standalone PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tests
+)
