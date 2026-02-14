@@ -17,6 +17,9 @@ class URLBar;
 class NavigationBar;
 class LoadingIndicator;
 class TabManager;
+class BookmarkPanel;
+class BookmarkService;
+class StorageService;
 
 /**
  * @class BrowserWindow
@@ -55,6 +58,25 @@ private:
      */
     void setupConnections();
 
+private slots:
+    /**
+     * @brief 북마크 버튼 클릭 핸들러
+     */
+    void onBookmarkButtonClicked();
+
+    /**
+     * @brief 북마크 선택 핸들러 (페이지 열기)
+     * @param url 북마크 URL
+     * @param title 북마크 제목
+     */
+    void onBookmarkSelected(const QString& url, const QString& title);
+
+    /**
+     * @brief URL 변경 핸들러
+     * @param url 새 URL
+     */
+    void onUrlChanged(const QString& url);
+
 private:
     // UI 컴포넌트
     QWidget *centralWidget_;         ///< 중앙 위젯
@@ -64,9 +86,16 @@ private:
     LoadingIndicator *loadingIndicator_;  ///< 로딩 인디케이터
     WebView *webView_;               ///< 웹뷰 컴포넌트
     QLabel *statusLabel_;            ///< 상태 라벨 (하단)
+    BookmarkPanel *bookmarkPanel_;   ///< 북마크 패널
 
     // 서비스
     TabManager *tabManager_;         ///< 탭 관리자
+    StorageService *storageService_; ///< 스토리지 서비스
+    BookmarkService *bookmarkService_; ///< 북마크 서비스
+
+    // 현재 페이지 정보
+    QString currentUrl_;             ///< 현재 URL
+    QString currentTitle_;           ///< 현재 페이지 제목
 };
 
 } // namespace webosbrowser

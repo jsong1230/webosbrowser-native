@@ -16,6 +16,7 @@ NavigationBar::NavigationBar(QWidget *parent)
     , forwardButton_(nullptr)
     , reloadButton_(nullptr)
     , homeButton_(nullptr)
+    , bookmarkButton_(nullptr)
     , webView_(nullptr)
 {
     qDebug() << "NavigationBar: 생성 중...";
@@ -97,6 +98,11 @@ void NavigationBar::onHomeClicked() {
     }
 }
 
+void NavigationBar::onBookmarkClicked() {
+    qDebug() << "NavigationBar: 북마크 버튼 클릭";
+    emit bookmarkButtonClicked();
+}
+
 void NavigationBar::setupUI() {
     // 레이아웃 생성
     layout_ = new QHBoxLayout(this);
@@ -108,6 +114,7 @@ void NavigationBar::setupUI() {
     forwardButton_ = new QPushButton("→", this);  // 앞으로 (U+2192)
     reloadButton_ = new QPushButton("↻", this);   // 새로고침 (U+21BB)
     homeButton_ = new QPushButton("⌂", this);     // 홈 (U+2302)
+    bookmarkButton_ = new QPushButton("★", this); // 북마크 (U+2605)
 
     // 버튼 크기 설정 (100x80px 이상)
     QSize minSize(100, 80);
@@ -115,12 +122,14 @@ void NavigationBar::setupUI() {
     forwardButton_->setMinimumSize(minSize);
     reloadButton_->setMinimumSize(minSize);
     homeButton_->setMinimumSize(minSize);
+    bookmarkButton_->setMinimumSize(minSize);
 
     // 포커스 정책 설정 (리모컨 포커스 네비게이션)
     backButton_->setFocusPolicy(Qt::StrongFocus);
     forwardButton_->setFocusPolicy(Qt::StrongFocus);
     reloadButton_->setFocusPolicy(Qt::StrongFocus);
     homeButton_->setFocusPolicy(Qt::StrongFocus);
+    bookmarkButton_->setFocusPolicy(Qt::StrongFocus);
 
     // 접근성 설정
     backButton_->setAccessibleName("뒤로 가기");
@@ -131,12 +140,15 @@ void NavigationBar::setupUI() {
     reloadButton_->setAccessibleDescription("현재 페이지를 다시 로드합니다");
     homeButton_->setAccessibleName("홈");
     homeButton_->setAccessibleDescription("홈페이지로 이동합니다");
+    bookmarkButton_->setAccessibleName("북마크");
+    bookmarkButton_->setAccessibleDescription("북마크 관리 패널을 엽니다");
 
     // 레이아웃에 버튼 추가
     layout_->addWidget(backButton_);
     layout_->addWidget(forwardButton_);
     layout_->addWidget(reloadButton_);
     layout_->addWidget(homeButton_);
+    layout_->addWidget(bookmarkButton_);
     layout_->addStretch();  // 우측 공간 확보
 
     // 초기 상태: WebView 없으므로 뒤로/앞으로 비활성
@@ -150,6 +162,7 @@ void NavigationBar::setupConnections() {
     connect(forwardButton_, &QPushButton::clicked, this, &NavigationBar::onForwardClicked);
     connect(reloadButton_, &QPushButton::clicked, this, &NavigationBar::onReloadClicked);
     connect(homeButton_, &QPushButton::clicked, this, &NavigationBar::onHomeClicked);
+    connect(bookmarkButton_, &QPushButton::clicked, this, &NavigationBar::onBookmarkClicked);
 }
 
 void NavigationBar::applyStyles() {
@@ -180,10 +193,11 @@ void NavigationBar::applyStyles() {
 }
 
 void NavigationBar::setupFocusOrder() {
-    // 리모컨 좌/우 방향키로 포커스 이동 (Back → Forward → Reload → Home)
+    // 리모컨 좌/우 방향키로 포커스 이동 (Back → Forward → Reload → Home → Bookmark)
     setTabOrder(backButton_, forwardButton_);
     setTabOrder(forwardButton_, reloadButton_);
     setTabOrder(reloadButton_, homeButton_);
+    setTabOrder(homeButton_, bookmarkButton_);
 }
 
 } // namespace webosbrowser
