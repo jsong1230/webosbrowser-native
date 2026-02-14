@@ -284,6 +284,21 @@ void DownloadManager::onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal
         }
     }
 
+    // 속도 계산용 이전 데이터 저장 (업데이트 전)
+    qint64 lastBytes = m_lastBytesReceived.value(id, 0);
+    qint64 lastTime = m_lastUpdateTime.value(id, now);
+
+    // 속도 계산
+    qreal speed = 0.0;
+    if (lastTime != now) {
+        qreal timeDiff = (now - lastTime) / 1000.0;  // 초 단위
+        if (timeDiff > 0) {
+            speed = (bytesReceived - lastBytes) / timeDiff;  // bytes/sec
+        }
+    }
+
+    // 현재 데이터 업데이트
+    m_lastBytesReceived[id] = bytesReceived;
     m_lastUpdateTime[id] = now;
 
     // DownloadItem 업데이트
@@ -291,21 +306,16 @@ void DownloadManager::onDownloadProgress(qint64 bytesReceived, qint64 bytesTotal
         if (item.id == id) {
             item.bytesReceived = bytesReceived;
             item.bytesTotal = bytesTotal;
-
-            // 속도 계산
-            item.speed = calculateSpeed(id);
+            item.speed = speed;
 
             // ETA 추정
-            item.estimatedTimeLeft = estimateTimeLeft(bytesReceived, bytesTotal, item.speed);
+            item.estimatedTimeLeft = estimateTimeLeft(bytesReceived, bytesTotal, speed);
 
             // 진행률 시그널 emit
             emit downloadProgressChanged(id, bytesReceived, bytesTotal);
             break;
         }
     }
-
-    // 이전 바이트 저장 (속도 계산용)
-    m_lastBytesReceived[id] = bytesReceived;
 }
 
 void DownloadManager::onDownloadFinished()

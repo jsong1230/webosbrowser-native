@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QTimer>
 #include <QDebug>
+#include <QMessageBox>
 
 namespace webosbrowser {
 
@@ -763,9 +764,35 @@ void DownloadPanel::openDownloadedFile(const QString& filePath)
         return;
     }
 
-    // QDesktopServices로 파일 열기 (OS 기본 앱)
-    QUrl fileUrl = QUrl::fromLocalFile(filePath);
+    // [보안] 다운로드 디렉토리 내부 파일인지 검증
+    QString downloadDir = m_downloadManager->downloadPath();
+    QString canonicalFilePath = fileInfo.canonicalFilePath();
+    QString canonicalDownloadDir = QFileInfo(downloadDir).canonicalFilePath();
 
+    if (!canonicalFilePath.startsWith(canonicalDownloadDir)) {
+        qCritical() << "DownloadPanel: 경로 조작 시도 감지 -" << filePath;
+        showToast("보안 오류: 잘못된 파일 경로");
+        return;
+    }
+
+    // [보안] 실행 파일 경고
+    QString suffix = fileInfo.suffix().toLower();
+    QStringList executableExtensions = {"exe", "sh", "bat", "cmd", "app", "msi", "deb", "rpm"};
+    if (executableExtensions.contains(suffix)) {
+        QMessageBox::StandardButton reply = QMessageBox::warning(
+            this,
+            "실행 파일 경고",
+            QString("실행 파일 (%1)을 열려고 합니다. 계속하시겠습니까?").arg(fileInfo.fileName()),
+            QMessageBox::Yes | QMessageBox::No,
+            QMessageBox::No
+        );
+        if (reply != QMessageBox::Yes) {
+            return;
+        }
+    }
+
+    // 파일 열기
+    QUrl fileUrl = QUrl::fromLocalFile(canonicalFilePath);
     if (!QDesktopServices::openUrl(fileUrl)) {
         qWarning() << "DownloadPanel: 파일 열기 실패 -" << filePath;
         showToast("이 파일 형식을 열 수 없습니다");
