@@ -12,7 +12,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 # Qt 패키지 찾기
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets)
 
 # 헤더 파일 경로
 include_directories(
@@ -59,6 +59,7 @@ target_link_libraries(webosbrowser
     Qt5::Core
     Qt5::Gui
     Qt5::Widgets
+    Qt5::WebEngineWidgets
 )
 
 # 컴파일 옵션
