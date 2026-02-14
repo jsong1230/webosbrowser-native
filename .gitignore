@@ -86,3 +86,4 @@ dist/
 *.tmp
 *.temp
 *.bak
+.worktrees/
