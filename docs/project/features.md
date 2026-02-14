@@ -6,21 +6,21 @@
 
 | ID | 기능명 | 설명 | 우선순위 | 의존성 | 병렬 그룹 | 충돌 영역 | 마일스톤 | 상태 |
 |----|--------|------|----------|--------|-----------|-----------|----------|------|
-| F-01 | 프로젝트 초기 설정 | webOS Enact 프로젝트 생성, 기본 구조, 라우팅 세팅 | Must | - | - | 프로젝트 전체 | M1 | ✅ 완료 |
-| F-02 | 웹뷰 통합 | webOS iframe/webview API로 웹 페이지 렌더링 | Must | F-01 | - | WebView 컴포넌트 | M1 | ✅ 완료 |
-| F-03 | URL 입력 UI | 리모컨 최적화 가상 키보드로 URL 입력 | Must | F-01 | PG-1 | URLBar 컴포넌트 | M1 | ✅ 완료 |
-| F-04 | 페이지 탐색 컨트롤 | 뒤로/앞으로/새로고침/홈 버튼 UI | Must | F-02 | PG-1 | NavigationBar 컴포넌트 | M1 | ✅ 완료 |
-| F-05 | 로딩 인디케이터 | 페이지 로딩 중 프로그레스바 표시 | Must | F-02 | PG-1 | LoadingBar 컴포넌트 | M1 | ✅ 완료 |
-| F-06 | 탭 관리 시스템 | 탭 상태 관리 (생성/전환/닫기) + 탭바 UI | Must | F-02 | - | TabManager 서비스, TabBar 컴포넌트 | M2 | ✅ 완료 |
-| F-07 | 북마크 관리 | 북마크 CRUD + 폴더 구조 + UI | Must | F-01 | PG-2 | BookmarkManager 서비스, BookmarkPanel 컴포넌트 | M2 | ✅ 완료 |
-| F-08 | 히스토리 관리 | 방문 기록 저장/조회/삭제 + UI | Must | F-02 | PG-2 | HistoryManager 서비스, HistoryPanel 컴포넌트 | M2 | ✅ 완료 |
-| F-09 | 검색 엔진 통합 | Google, Naver 검색 엔진 선택 및 검색 쿼리 생성 | Must | F-03 | PG-2 | SearchEngine 서비스, URLBar 컴포넌트 | M2 | ✅ 완료 |
-| F-10 | 에러 처리 | 연결 실패, 404, 렌더링 오류 시 에러 화면 | Must | F-02 | - | ErrorPage 컴포넌트, WebView 컴포넌트 | M2 | ✅ 완료 |
-| F-11 | 설정 화면 | 검색 엔진, 홈페이지, 테마, 브라우징 데이터 삭제 설정 | Must | F-09 | - | SettingsPanel 컴포넌트, Settings 서비스 | M3 | ✅ 완료 |
-| F-12 | 다운로드 관리 | 다운로드 시작/진행/완료 관리 + UI | Should | F-02 | PG-3 | DownloadManager 서비스, DownloadPanel 컴포넌트 | M3 | ✅ 완료 |
-| F-13 | 리모컨 단축키 | 채널 버튼, 컬러 버튼 등으로 기능 실행 | Should | F-06, F-07 | PG-3 | KeyboardHandler 서비스 | M3 | ✅ 완료 |
-| F-14 | HTTPS 보안 표시 | 보안 연결 상태 아이콘, 경고 다이얼로그 | Should | F-02 | PG-3 | SecurityIndicator 컴포넌트, URLBar 컴포넌트 | M3 | ✅ 완료 |
-| F-15 | 즐겨찾기 홈 화면 | 자주 가는 사이트 그리드 뷰 (홈 페이지) | Should | F-07 | - | HomePage 컴포넌트 | M3 | ✅ 완료 |
+| F-01 | 프로젝트 초기 설정 | Qt/C++ 프로젝트 생성, CMakeLists.txt, 디렉토리 구조, 스켈레톤 코드 | Must | - | - | 프로젝트 전체 | M1 | ✅ 완료 |
+| F-02 | 웹뷰 통합 | webOS WebView API로 웹 페이지 렌더링 (Native) | Must | F-01 | - | WebView 컴포넌트 | M1 | ⏳ 대기 |
+| F-03 | URL 입력 UI | Qt 입력 위젯으로 URL 입력 (리모컨 최적화) | Must | F-01 | PG-1 | URLBar 컴포넌트 | M1 | ⏳ 대기 |
+| F-04 | 페이지 탐색 컨트롤 | 뒤로/앞으로/새로고침/홈 버튼 UI (Qt Widgets) | Must | F-02 | PG-1 | NavigationBar 컴포넌트 | M1 | ⏳ 대기 |
+| F-05 | 로딩 인디케이터 | 페이지 로딩 중 프로그레스바 표시 (Qt ProgressBar) | Must | F-02 | PG-1 | LoadingBar 컴포넌트 | M1 | ⏳ 대기 |
+| F-06 | 탭 관리 시스템 | 탭 상태 관리 (생성/전환/닫기) + 탭바 UI | Must | F-02 | - | TabManager 서비스, TabBar 컴포넌트 | M2 | ⏳ 대기 |
+| F-07 | 북마크 관리 | 북마크 CRUD + 폴더 구조 + UI (LS2 API 저장) | Must | F-01 | PG-2 | BookmarkManager 서비스, BookmarkPanel 컴포넌트 | M2 | ⏳ 대기 |
+| F-08 | 히스토리 관리 | 방문 기록 저장/조회/삭제 + UI (LS2 API 저장) | Must | F-02 | PG-2 | HistoryManager 서비스, HistoryPanel 컴포넌트 | M2 | ⏳ 대기 |
+| F-09 | 검색 엔진 통합 | Google, Naver 검색 엔진 선택 및 검색 쿼리 생성 | Must | F-03 | PG-2 | SearchEngine 서비스, URLBar 컴포넌트 | M2 | ⏳ 대기 |
+| F-10 | 에러 처리 | 연결 실패, 404, 렌더링 오류 시 에러 화면 | Must | F-02 | - | ErrorPage 컴포넌트, WebView 컴포넌트 | M2 | ⏳ 대기 |
+| F-11 | 설정 화면 | 검색 엔진, 홈페이지, 테마, 브라우징 데이터 삭제 설정 | Must | F-09 | - | SettingsPanel 컴포넌트, Settings 서비스 | M3 | ⏳ 대기 |
+| F-12 | 다운로드 관리 | 다운로드 시작/진행/완료 관리 + UI | Should | F-02 | PG-3 | DownloadManager 서비스, DownloadPanel 컴포넌트 | M3 | ⏳ 대기 |
+| F-13 | 리모컨 단축키 | 채널 버튼, 컬러 버튼 등으로 기능 실행 (Qt 키 이벤트) | Should | F-06, F-07 | PG-3 | KeyboardHandler 서비스 | M3 | ⏳ 대기 |
+| F-14 | HTTPS 보안 표시 | 보안 연결 상태 아이콘, 경고 다이얼로그 | Should | F-02 | PG-3 | SecurityIndicator 컴포넌트, URLBar 컴포넌트 | M3 | ⏳ 대기 |
+| F-15 | 즐겨찾기 홈 화면 | 자주 가는 사이트 그리드 뷰 (홈 페이지) | Should | F-07 | - | HomePage 컴포넌트 | M3 | ⏳ 대기 |
 
 ### 병렬 그룹 규칙
 - **같은 마일스톤** 내에서만 그룹 구성
@@ -78,13 +78,13 @@ F-01 (프로젝트 초기 설정)
 
 ### F-01: 프로젝트 초기 설정
 - **작업 내용**:
-  - webOS Enact CLI로 프로젝트 생성
-  - 기본 디렉토리 구조 구성 (components, services, utils)
-  - 라우팅 설정 (Enact Router)
-  - 전역 스타일 (Enact Moonstone 테마)
-  - ESLint, Prettier 설정
+  - Qt/C++ 프로젝트 생성 (CMakeLists.txt)
+  - 기본 디렉토리 구조 구성 (src/browser, src/ui, src/services, src/utils)
+  - webOS 메타데이터 설정 (webos-meta/appinfo.json)
+  - 스켈레톤 코드 작성 (BrowserWindow, WebView, 서비스 클래스)
+  - Git 리포지토리 초기화
 - **예상 복잡도**: Low
-- **완료 기준**: 앱 실행 시 "Hello webOS Browser" 화면 표시
+- **완료 기준**: CMake 빌드 성공, "Hello webOS Browser" 윈도우 표시
 
 ### F-02: 웹뷰 통합
 - **작업 내용**:
