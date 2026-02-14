@@ -6,6 +6,99 @@
 
 ---
 
+## [0.7.0] - 2026-02-14
+
+### F-11: 설정 화면 (Settings Management)
+
+#### Added (새로 추가됨)
+
+##### SettingsService: 설정 관리 서비스 (420줄)
+- `src/services/SettingsService.h/cpp`: LS2 API 기반 설정 관리
+- 메서드: `getSearchEngine()`, `setSearchEngine()`, `getHomepage()`, `setHomepage()`, `getTheme()`, `setTheme()`, `clearBrowsingData()`
+- 시그널: `settingsChanged()`, `browsingDataCleared()`, `errorOccurred()`
+- 검색 엔진 화이트리스트: Google (기본), Naver, Bing, DuckDuckGo
+- URLValidator 통합: javascript:/file:// 차단
+- 영속 저장: LS2 API (앱 재시작 후 유지)
+
+##### SettingsPanel: 설정 UI 패널 (680줄)
+- `src/ui/SettingsPanel.h/cpp`: QWidget 오버레이 패널
+- 슬라이드 애니메이션: 300ms, OutCubic (우측 슬라이드 인/아웃)
+- 4개 탭:
+  1. **검색 엔진**: QComboBox (Google 기본값)
+  2. **홈페이지**: QLineEdit + URLValidator (https://, javascript: 차단)
+  3. **테마**: QRadioButton (다크/라이트 모드)
+  4. **데이터 삭제**: QPushButton + QMessageBox (확인 다이얼로그)
+- 리모컨 최적화:
+  - Tab Order: 탭 간 포커스 전환 (←→ 키)
+  - Focus 표시: 3px 파란 테두리
+  - Back 키: 패널 닫기
+  - Select 키: 버튼 클릭
+
+##### QSS 테마 시스템
+- `src/ui/themes/dark.qss`: 다크 모드 (기본)
+- `src/ui/themes/light.qss`: 라이트 모드
+- QRC 리소스 등록: `resources/styles.qrc`
+- BrowserWindow::applyTheme(QString): 전역 스타일시트 적용 (qApp->setStyleSheet)
+- 설정에서 테마 변경 시 즉시 UI 전체 새로고침
+
+##### 브라우징 데이터 삭제 (오류 처리 포함)
+- BookmarkService::clearAllBookmarks()
+- HistoryService::clearAllHistory()
+- QSharedPointer 카운터로 삭제 성공/실패 추적
+- 사용자 피드백: 토스트 메시지 (1.5초 표시)
+
+#### Changed (변경됨)
+
+- **CMakeLists.txt**
+  - `src/services/SettingsService.cpp` 추가
+  - `src/ui/SettingsPanel.cpp` 추가
+  - `resources/styles.qrc` QRC 파일 등록
+
+- **BrowserWindow 클래스**
+  - `SettingsService *settingsService_` 멤버 추가
+  - `SettingsPanel *settingsPanel_` 멤버 추가
+  - `applyTheme(QString themeName)` 메서드 추가
+  - `handleMenuButton()` 메서드 추가
+  - `keyPressEvent()`: Menu 버튼 → `handleMenuButton()` (F-13 Menu 단축키)
+  - 설정 로드: 생성자에서 SettingsService 초기화
+
+- **NavigationBar 클래스**
+  - `setHomepage(const QUrl &url)` 메서드 추가 (동적 홈페이지 설정)
+  - 초기화: SettingsService에서 저장된 홈페이지 로드
+  - Home 버튼: 설정된 홈페이지 또는 https://www.google.com으로 이동
+
+#### Improved (개선됨)
+
+- **설정 항목 관리**: 검색 엔진, 홈페이지, 테마, 브라우징 데이터 한 곳에서 통합 관리
+- **화이트리스트 검증**: 검색 엔진은 사전 정의된 목록만 허용 (보안)
+- **URL 검증**: javascript:/file:// 프로토콜 차단으로 XSS 방지
+- **즉시 적용**: 테마 변경 시 전역 스타일시트로 즉시 반영 (UI 재렌더링)
+- **리모컨 최적화**: Tab Order와 Focus 표시로 직관적 네비게이션
+- **오류 처리**: 브라우징 데이터 삭제 실패 감지 및 사용자 알림
+
+#### Test (테스트)
+
+- **정적 검증**: 전체 통과
+- **단위 테스트**: 20개 시나리오
+  - SettingsService 테스트: 검색엔진, 홈페이지, 테마, 데이터 삭제
+  - SettingsPanel 테스트: UI 렌더링, 리모컨 네비게이션, Focus 관리
+  - 테마 시스템 테스트: QSS 파일 로드, 전역 스타일 적용
+  - 오류 처리 테스트: 삭제 실패 시나리오
+- **코드 리뷰**:
+  - Critical 1개 (브라우징 데이터 삭제 실패 처리) → 즉시 수정 (51eef01)
+  - Warning 2개 (M3 이후 개선 예정):
+    1. BookmarkPanel 자동 새로고침
+    2. 슬라이드 애니메이션 GPU 가속
+  - Info 3개 (향후 참고)
+- **점수**: test-runner 98/100, code-reviewer 96/100
+
+#### Known Issues
+
+- **Warning 1**: BookmarkPanel 자동 새로고침 미구현 (SettingsPanel에서 데이터 삭제 후 BookmarkPanel 재렌더링 미지원) → M4 개선 예정
+- **Warning 2**: 슬라이드 애니메이션 GPU 가속 미보장 (QPropertyAnimation이 실제 기기에서 30fps 이상 보장 불가) → 실제 webOS 기기 테스트 필요
+
+---
+
 ## [0.6.0] - 2026-02-14
 
 ### PG-3: 병렬 배치 (F-12, F-13, F-14) 완료
