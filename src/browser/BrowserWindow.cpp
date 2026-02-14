@@ -11,6 +11,7 @@
 #include "../ui/LoadingIndicator.h"
 #include "../ui/HistoryPanel.h"
 #include "../ui/BookmarkPanel.h"
+#include "../ui/ErrorPage.h"
 #include "../services/StorageService.h"
 #include "../services/HistoryService.h"
 #include "../services/BookmarkService.h"
@@ -20,6 +21,7 @@
 #include <QScreen>
 #include <QLabel>
 #include <QStatusBar>
+#include <QPropertyAnimation>
 
 namespace webosbrowser {
 
@@ -30,7 +32,10 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     , urlBar_(new URLBar(centralWidget_))
     , navigationBar_(new NavigationBar(centralWidget_))
     , loadingIndicator_(new LoadingIndicator(centralWidget_))
-    , webView_(new WebView(centralWidget_))
+    , contentWidget_(new QWidget(centralWidget_))
+    , stackedLayout_(new QStackedLayout(contentWidget_))
+    , webView_(new WebView(contentWidget_))
+    , errorPage_(new ErrorPage(contentWidget_))
     , statusLabel_(new QLabel("준비", this))
     , bookmarkPanel_(nullptr)
     , historyPanel_(nullptr)
@@ -97,8 +102,14 @@ void BrowserWindow::setupUI() {
     // LoadingIndicator 추가 (NavigationBar 아래, 얇은 프로그레스바)
     mainLayout_->addWidget(loadingIndicator_);
 
-    // WebView 추가 (중간, stretch=1로 남은 공간 모두 차지)
-    mainLayout_->addWidget(webView_, 1);
+    // WebView/ErrorPage 컨테이너 설정 (QStackedLayout)
+    stackedLayout_->setStackingMode(QStackedLayout::StackOne);
+    stackedLayout_->addWidget(webView_);
+    stackedLayout_->addWidget(errorPage_);
+    stackedLayout_->setCurrentWidget(webView_);  // 기본값: WebView 표시
+
+    // 컨테이너를 메인 레이아웃에 추가 (stretch=1로 남은 공간 모두 차지)
+    mainLayout_->addWidget(contentWidget_, 1);
 
     // NavigationBar와 WebView 연결
     navigationBar_->setWebView(webView_);
@@ -129,7 +140,8 @@ void BrowserWindow::setupConnections() {
 
     // WebView → LoadingIndicator 연결
     connect(webView_, &WebView::loadStarted, loadingIndicator_, &LoadingIndicator::startLoading);
-    connect(webView_, &WebView::loadProgress, loadingIndicator_, &LoadingIndicator::setProgress);
+    connect(webView_, static_cast<void(WebView::*)(int)>(&WebView::loadProgress),
+            loadingIndicator_, &LoadingIndicator::setProgress);
     connect(webView_, &WebView::loadFinished, loadingIndicator_, &LoadingIndicator::finishLoading);
 
     // WebView 로딩 시작 이벤트
@@ -140,7 +152,8 @@ void BrowserWindow::setupConnections() {
     });
 
     // WebView 로딩 진행률 이벤트
-    connect(webView_, &WebView::loadProgress, this, [this](int progress) {
+    connect(webView_, static_cast<void(WebView::*)(int)>(&WebView::loadProgress),
+            this, [this](int progress) {
         statusLabel_->setText(QString("로딩 중... %1%").arg(progress));
     });
 
@@ -175,17 +188,22 @@ void BrowserWindow::setupConnections() {
         qDebug() << "BrowserWindow: URL 변경 -" << url.toString();
     });
 
-    // WebView 에러 이벤트 (URLBar + StatusLabel 동시 업데이트)
-    connect(webView_, &WebView::loadError, this, [this](const QString &errorString) {
-        urlBar_->showError(errorString);
-        statusLabel_->setText("에러: " + errorString);
-        qDebug() << "BrowserWindow: 로딩 에러 -" << errorString;
-    });
+    // WebView 에러 이벤트 → ErrorPage 표시
+    connect(webView_, &WebView::loadError, this, &BrowserWindow::onLoadError);
 
-    // WebView 타임아웃 이벤트
-    connect(webView_, &WebView::loadTimeout, this, [this]() {
-        statusLabel_->setText("타임아웃: 30초 초과");
-        qDebug() << "BrowserWindow: 로딩 타임아웃";
+    // WebView 타임아웃 이벤트 → ErrorPage 표시
+    connect(webView_, &WebView::loadTimeout, this, &BrowserWindow::onLoadTimeout);
+
+    // ErrorPage 시그널 연결
+    connect(errorPage_, &ErrorPage::retryRequested, this, &BrowserWindow::onRetryRequested);
+    connect(errorPage_, &ErrorPage::homeRequested, this, &BrowserWindow::onHomeRequested);
+
+    // WebView 로딩 성공 시 WebView로 전환 (에러 화면 숨김)
+    connect(webView_, &WebView::loadFinished, this, [this](bool success) {
+        if (success) {
+            stackedLayout_->setCurrentWidget(webView_);
+        }
+        // 실패 시는 onLoadError에서 처리
     });
 
     // WebView 로딩 완료 → 히스토리 자동 기록
@@ -268,6 +286,98 @@ void BrowserWindow::onUrlChanged(const QString& url) {
     if (bookmarkPanel_) {
         bookmarkPanel_->setCurrentPage(currentUrl_, currentTitle_);
     }
+}
+
+void BrowserWindow::onLoadError(const QString &errorString) {
+    // 에러 메시지 파싱으로 ErrorType 추론
+    ErrorType type = ErrorType::NetworkError;  // 기본값
+
+    if (errorString.contains("timeout", Qt::CaseInsensitive)) {
+        type = ErrorType::Timeout;
+    } else if (errorString.contains("cors", Qt::CaseInsensitive) ||
+               errorString.contains("cross-origin", Qt::CaseInsensitive)) {
+        type = ErrorType::CorsError;
+    }
+
+    // ErrorInfo 생성
+    ErrorInfo errorInfo;
+    errorInfo.type = type;
+    errorInfo.errorMessage = errorString;
+    errorInfo.url = webView_->url();
+    errorInfo.timestamp = QDateTime::currentDateTime();
+
+    // ErrorPage 표시
+    errorPage_->showError(errorInfo);
+    stackedLayout_->setCurrentWidget(errorPage_);
+
+    // URLBar와 StatusLabel 업데이트
+    urlBar_->showError(errorString);
+    statusLabel_->setText("에러: " + errorString);
+
+    // 로그 기록
+    qCritical() << "Page load error:"
+                << "type=" << static_cast<int>(type)
+                << "message=" << errorString
+                << "url=" << errorInfo.url.toString();
+}
+
+void BrowserWindow::onLoadTimeout() {
+    ErrorInfo errorInfo;
+    errorInfo.type = ErrorType::Timeout;
+    errorInfo.errorMessage = "페이지 로딩 시간이 초과되었습니다 (30초)";
+    errorInfo.url = webView_->url();
+    errorInfo.timestamp = QDateTime::currentDateTime();
+
+    // ErrorPage 표시
+    errorPage_->showError(errorInfo);
+    stackedLayout_->setCurrentWidget(errorPage_);
+
+    // StatusLabel 업데이트
+    statusLabel_->setText("타임아웃: 30초 초과");
+
+    // 로그 기록
+    qCritical() << "Page load timeout:" << errorInfo.url.toString();
+}
+
+void BrowserWindow::onRetryRequested() {
+    qDebug() << "BrowserWindow: 재시도 요청";
+
+    // ErrorPage 페이드아웃 애니메이션
+    QPropertyAnimation *fadeOut = new QPropertyAnimation(errorPage_, "windowOpacity");
+    fadeOut->setDuration(200);
+    fadeOut->setStartValue(1.0);
+    fadeOut->setEndValue(0.0);
+    fadeOut->setEasingCurve(QEasingCurve::InCubic);
+
+    // 애니메이션 완료 후 WebView로 전환 및 재시도
+    connect(fadeOut, &QPropertyAnimation::finished, this, [this]() {
+        stackedLayout_->setCurrentWidget(webView_);
+        webView_->reload();
+        errorPage_->hide();
+    });
+
+    fadeOut->start(QAbstractAnimation::DeleteWhenStopped);
+}
+
+void BrowserWindow::onHomeRequested() {
+    qDebug() << "BrowserWindow: 홈으로 이동 요청";
+
+    // ErrorPage 페이드아웃 애니메이션
+    QPropertyAnimation *fadeOut = new QPropertyAnimation(errorPage_, "windowOpacity");
+    fadeOut->setDuration(200);
+    fadeOut->setStartValue(1.0);
+    fadeOut->setEndValue(0.0);
+    fadeOut->setEasingCurve(QEasingCurve::InCubic);
+
+    // 애니메이션 완료 후 WebView로 전환 및 홈페이지 이동
+    connect(fadeOut, &QPropertyAnimation::finished, this, [this]() {
+        stackedLayout_->setCurrentWidget(webView_);
+        // 홈 URL은 하드코딩 (향후 SettingsService 연동)
+        webView_->load(QUrl("https://www.google.com"));
+        errorPage_->hide();
+    });
+
+    fadeOut->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
 } // namespace webosbrowser

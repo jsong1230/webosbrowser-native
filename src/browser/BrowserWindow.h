@@ -8,6 +8,7 @@
 #include <QMainWindow>
 #include <QLabel>
 #include <QVBoxLayout>
+#include <QStackedLayout>
 
 namespace webosbrowser {
 
@@ -22,6 +23,7 @@ class BookmarkPanel;
 class BookmarkService;
 class HistoryService;
 class HistoryPanel;
+class ErrorPage;
 
 /**
  * @class BrowserWindow
@@ -97,6 +99,27 @@ private slots:
      */
     void onHistorySelected(const QString& url, const QString& title);
 
+    /**
+     * @brief WebView 로딩 에러 핸들러
+     * @param errorString 에러 메시지
+     */
+    void onLoadError(const QString &errorString);
+
+    /**
+     * @brief WebView 타임아웃 핸들러
+     */
+    void onLoadTimeout();
+
+    /**
+     * @brief ErrorPage 재시도 핸들러
+     */
+    void onRetryRequested();
+
+    /**
+     * @brief ErrorPage 홈 이동 핸들러
+     */
+    void onHomeRequested();
+
 private:
     // UI 컴포넌트
     QWidget *centralWidget_;         ///< 중앙 위젯
@@ -104,7 +127,10 @@ private:
     URLBar *urlBar_;                 ///< URL 입력 바
     NavigationBar *navigationBar_;   ///< 네비게이션 바
     LoadingIndicator *loadingIndicator_;  ///< 로딩 인디케이터
+    QWidget *contentWidget_;         ///< WebView/ErrorPage 컨테이너
+    QStackedLayout *stackedLayout_;  ///< 전환 레이아웃
     WebView *webView_;               ///< 웹뷰 컴포넌트
+    ErrorPage *errorPage_;           ///< 에러 화면
     QLabel *statusLabel_;            ///< 상태 라벨 (하단)
     BookmarkPanel *bookmarkPanel_;   ///< 북마크 패널
     HistoryPanel *historyPanel_;     ///< 히스토리 패널 (오버레이)

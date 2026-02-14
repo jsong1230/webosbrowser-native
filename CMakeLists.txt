@@ -12,7 +12,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 # Qt 패키지 찾기
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets WebEngineWidgets)
 
 # 헤더 파일 경로
 include_directories(
@@ -29,6 +29,7 @@ set(SOURCES
     src/ui/URLBar.cpp
     src/ui/NavigationBar.cpp
     src/ui/LoadingIndicator.cpp
+    src/ui/ErrorPage.cpp
     src/ui/BookmarkPanel.cpp
     src/ui/HistoryPanel.cpp
     src/services/BookmarkService.cpp
@@ -48,6 +49,7 @@ set(HEADERS
     src/ui/URLBar.h
     src/ui/NavigationBar.h
     src/ui/LoadingIndicator.h
+    src/ui/ErrorPage.h
     src/ui/BookmarkPanel.h
     src/ui/HistoryPanel.h
     src/models/Bookmark.h
@@ -68,6 +70,7 @@ target_link_libraries(webosbrowser
     Qt5::Core
     Qt5::Gui
     Qt5::Widgets
+    Qt5::WebEngineWidgets
 )
 
 # 컴파일 옵션

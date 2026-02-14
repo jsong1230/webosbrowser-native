@@ -13,6 +13,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QDialog>
+#include <QComboBox>
 #include "../models/Bookmark.h"
 
 namespace webosbrowser {
