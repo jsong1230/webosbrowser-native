@@ -8,378 +8,704 @@
 
 ## 2. 구현 Phase
 
-### Phase 1: 에러 분류 유틸리티 구현
-- [ ] Task 1-1: `src/utils/errorClassifier.js` 생성 → frontend-dev
-  - `classifyErrorByTitle()` 함수 구현 (페이지 타이틀 기반 404, 500 감지)
-  - `getErrorMessage()` 함수 구현 (에러 코드 → 메시지 변환)
-  - `getErrorTitle()` 함수 구현 (에러 코드 → 제목 변환)
-  - 단위 테스트 작성 (Jest)
-- **예상 산출물**: `src/utils/errorClassifier.js`
-- **완료 기준**:
-  - 404, 500, 네트워크(-1), 타임아웃(-2), CORS(-3), 알 수 없음(-99) 에러 타입 분류 가능
-  - 각 에러 코드에 대한 한국어 메시지 반환
-  - 테스트 커버리지 90% 이상
-- **예상 소요 시간**: 1시간
+### Phase 1: ErrorPage 클래스 기본 구현
+**담당**: cpp-dev
+**예상 소요 시간**: 4~5시간
+
+- [ ] Task 1-1: ErrorPage 헤더 파일 작성 (`src/ui/ErrorPage.h`)
+  - ErrorType enum class 정의 (NetworkError, Timeout, CorsError, UnknownError)
+  - ErrorInfo 구조체 정의 (type, errorMessage, url, timestamp)
+  - ErrorPage 클래스 선언 (QWidget 상속)
+  - 시그널 정의: `retryRequested()`, `homeRequested()`
+  - 메서드 정의: `showError()`, `keyPressEvent()`, `showEvent()`
+  - private 멤버: UI 컴포넌트 (QLabel, QPushButton), currentError_
+
+- [ ] Task 1-2: ErrorPage 기본 UI 구현 (`src/ui/ErrorPage.cpp`)
+  - 생성자: UI 컴포넌트 생성 및 초기화
+  - `setupUI()`: QVBoxLayout 기반 레이아웃 구성
+    - 아이콘 QLabel (80x80px)
+    - 제목 QLabel (48px, Bold)
+    - 메시지 QLabel (28px, WordWrap)
+    - URL QLabel (22px, 회색)
+    - QHBoxLayout: 재시도 버튼, 홈 버튼 (200x60px)
+  - 중앙 정렬: `layout->setAlignment(Qt::AlignCenter)`
+
+- [ ] Task 1-3: ErrorPage 스타일 구현
+  - `applyStyles()`: QSS 스타일시트 적용
+    - 배경: `rgba(0, 0, 0, 230)` (반투명 검은색)
+    - 텍스트: 흰색
+    - 버튼: 파란색 배경 (#1E90FF), 흰색 텍스트
+    - 포커스: 4px 노란색 테두리 (#FFD700)
+  - 포커스 정책: `retryButton->setFocusPolicy(Qt::StrongFocus)`
+  - 탭 오더 설정: `setTabOrder(retryButton_, homeButton_)` (순환)
+
+**예상 산출물**:
+- `src/ui/ErrorPage.h`
+- `src/ui/ErrorPage.cpp` (기본 UI 및 스타일)
+
+**완료 기준**:
+- ErrorPage 위젯을 단독으로 생성하고 표시 가능
+- 스타일시트가 정상 적용됨 (배경, 텍스트, 버튼)
+- 버튼 포커스가 리모컨 방향키로 전환 가능 (탭 오더)
+- 컴파일 에러 없음
 
 ---
 
-### Phase 2: ErrorPage 컴포넌트 구현 (UI)
-- [ ] Task 2-1: `src/components/ErrorPage/ErrorPage.js` 생성 → frontend-dev
-  - PropTypes 정의 (errorCode, errorMessage, url, onRetry, onGoHome)
-  - 에러 아이콘, 제목, 메시지, URL 표시 레이아웃 구현
-  - Moonstone Button 컴포넌트 사용 (재시도, 홈 버튼)
-  - Spotlight 포커스 관리 (초기 포커스: 재시도 버튼)
-  - 버튼 클릭 핸들러 (onRetry, onGoHome 콜백 호출)
-- [ ] Task 2-2: `src/components/ErrorPage/ErrorPage.module.less` 생성 → frontend-dev
-  - 반투명 검은색 오버레이 (rgba(0, 0, 0, 0.9))
-  - 대화면 최적화 폰트 크기 (제목 48px, 메시지 28px, URL 22px)
-  - 페이드인/아웃 애니메이션 (300ms/200ms)
-  - 버튼 스타일 (최소 200x60px, 폰트 24px)
-  - Spotlight 포커스 스타일 (노란색 테두리 4px)
-- [ ] Task 2-3: `src/components/ErrorPage/index.js` 생성 → frontend-dev
-  - ErrorPage 컴포넌트 export default
-- **예상 산출물**:
-  - `src/components/ErrorPage/ErrorPage.js`
-  - `src/components/ErrorPage/ErrorPage.module.less`
-  - `src/components/ErrorPage/index.js`
-- **완료 기준**:
-  - ErrorPage 컴포넌트가 독립적으로 렌더링 가능 (Storybook 테스트)
-  - 리모컨 방향키로 재시도 ↔ 홈 버튼 전환 가능
-  - 페이드인/아웃 애니메이션 정상 동작
-  - Moonstone 스타일 가이드 준수
-- **예상 소요 시간**: 2시간
+### Phase 2: ErrorPage 로직 구현
+**담당**: cpp-dev
+**예상 소요 시간**: 3~4시간
+
+- [ ] Task 2-1: `showError()` 메서드 구현
+  - ErrorType → 제목 문자열 맵핑 (switch-case)
+  - UI 업데이트: `setText()` 호출
+  - URL truncate (50자 제한): `truncateUrl()` 헬퍼 메서드
+  - 재시도 버튼에 자동 포커스: `setFocus(Qt::OtherFocusReason)`
+  - ErrorInfo 구조체 저장: `currentError_`
+
+- [ ] Task 2-2: 에러 타입별 아이콘 처리
+  - `getErrorIcon(ErrorType)`: 에러 타입에 따른 아이콘 경로 반환
+  - 현재는 공통 아이콘 사용: `":/icons/error.png"`
+  - 향후 확장 대비 분기 구조 준비
+
+- [ ] Task 2-3: 키 이벤트 핸들러 구현
+  - `keyPressEvent(QKeyEvent*)` 오버라이드
+  - Back 키 무시: `event->ignore()`
+  - 나머지 키는 Qt 기본 동작 (탭 오더 시스템)
+
+- [ ] Task 2-4: 페이드인 애니메이션 구현
+  - `showEvent(QShowEvent*)` 오버라이드
+  - QPropertyAnimation 생성 (windowOpacity: 0 → 1, 300ms)
+  - EasingCurve: `QEasingCurve::OutCubic`
+  - `DeleteWhenStopped` 플래그로 자동 메모리 해제
+  - `startFadeInAnimation()` 헬퍼 메서드
+
+- [ ] Task 2-5: 시그널 연결
+  - 재시도 버튼 `clicked` → `retryRequested()` 시그널
+  - 홈 버튼 `clicked` → `homeRequested()` 시그널
+
+**예상 산출물**:
+- `src/ui/ErrorPage.cpp` (로직 완성)
+- `resources/icons/error.png` (80x80px 에러 아이콘)
+
+**완료 기준**:
+- `showError()`를 호출하면 에러 타입별 제목이 표시됨
+- URL이 50자 초과 시 truncate되어 표시됨 ("...")
+- 페이드인 애니메이션이 부드럽게 동작 (300ms)
+- 버튼 클릭 시 시그널이 정상 emit됨 (QSignalSpy 테스트)
 
 ---
 
-### Phase 3: WebView 컴포넌트 수정 (에러 감지 및 ErrorPage 통합)
-- [ ] Task 3-1: WebView.js 에러 상태 관리 추가 → frontend-dev
-  - `const [error, setError] = useState(null)` 추가
-  - 에러 정보 구조: `{ errorCode, errorMessage, url }`
-- [ ] Task 3-2: WebView.js 인라인 에러 UI 제거 → frontend-dev
-  - 377~397줄 기존 에러 메시지 제거
-  - ErrorPage 컴포넌트 import 및 렌더링 로직 추가
-- [ ] Task 3-3: WebView.js handleGoHome 핸들러 추가 → frontend-dev
-  - 홈 버튼 클릭 시 homeUrl로 iframe.src 변경
-  - changeState('loading') 호출
-  - 타임아웃 타이머 재시작
-- [ ] Task 3-4: WebView.js handleLoad 수정 (휴리스틱 에러 감지) → frontend-dev
-  - extractTitle()로 페이지 제목 추출
-  - `classifyErrorByTitle(title)` 호출
-  - 404, 500 감지 시 changeState('error', errorInfo) 호출
-  - onLoadError 콜백 호출
-- [ ] Task 3-5: WebView.js PropTypes 수정 → frontend-dev
-  - `homeUrl: PropTypes.string` 추가 (defaultProps: 'https://www.google.com')
-- [ ] Task 3-6: WebView.module.less 에러 스타일 제거 → frontend-dev
-  - 40~100줄 기존 에러 스타일 삭제 (ErrorPage로 이동)
-- **의존성**: Phase 1 (errorClassifier), Phase 2 (ErrorPage) 완료 필요
-- **예상 산출물**:
-  - `src/components/WebView/WebView.js` (수정)
-  - `src/components/WebView/WebView.module.less` (수정)
-- **완료 기준**:
-  - iframe onError 시 ErrorPage 렌더링
-  - 30초 타임아웃 시 ErrorPage 렌더링
-  - 404, 500 페이지 로딩 시 ErrorPage 렌더링
-  - 재시도 버튼 클릭 시 iframe 재로딩
-  - 홈 버튼 클릭 시 homeUrl로 이동
-  - 에러 로그 기록 (logger.error)
-- **예상 소요 시간**: 2시간
+### Phase 3: BrowserWindow 통합
+**담당**: cpp-dev
+**예상 소요 시간**: 3~4시간
+**의존성**: Phase 2 완료 필요
+
+- [ ] Task 3-1: BrowserWindow.h 수정
+  - 헤더 추가: `#include <QStackedLayout>`, `#include "../ui/ErrorPage.h"`
+  - private 멤버 추가:
+    - `QWidget *contentWidget_` (WebView/ErrorPage 컨테이너)
+    - `QStackedLayout *stackedLayout_` (전환 레이아웃)
+    - `ErrorPage *errorPage_` (에러 화면)
+  - private slots 추가:
+    - `void onLoadError(const QString &errorString)`
+    - `void onLoadTimeout()`
+    - `void onRetryRequested()`
+    - `void onHomeRequested()`
+
+- [ ] Task 3-2: BrowserWindow.cpp 생성자 수정
+  - 초기화 리스트에 추가:
+    - `contentWidget_(new QWidget(centralWidget_))`
+    - `stackedLayout_(new QStackedLayout(contentWidget_))`
+    - `errorPage_(new ErrorPage(contentWidget_))`
+
+- [ ] Task 3-3: `setupUI()` 메서드 수정
+  - QStackedLayout 설정:
+    - `stackedLayout_->addWidget(webView_)`
+    - `stackedLayout_->addWidget(errorPage_)`
+    - `stackedLayout_->setCurrentWidget(webView_)` (기본값)
+  - contentWidget을 mainLayout에 추가:
+    - `mainLayout_->addWidget(contentWidget_, 1)` (stretch=1)
+
+- [ ] Task 3-4: `setupConnections()` 메서드 수정
+  - WebView 에러 시그널 연결:
+    - `connect(webView_, &WebView::loadError, this, &BrowserWindow::onLoadError)`
+    - `connect(webView_, &WebView::loadTimeout, this, &BrowserWindow::onLoadTimeout)`
+  - ErrorPage 시그널 연결:
+    - `connect(errorPage_, &ErrorPage::retryRequested, this, &BrowserWindow::onRetryRequested)`
+    - `connect(errorPage_, &ErrorPage::homeRequested, this, &BrowserWindow::onHomeRequested)`
+  - WebView 로딩 성공 시 전환:
+    - `connect(webView_, &WebView::loadFinished, [this](bool success) { ... })`
+
+**예상 산출물**:
+- `src/browser/BrowserWindow.h` (수정)
+- `src/browser/BrowserWindow.cpp` (수정)
+
+**완료 기준**:
+- BrowserWindow가 컴파일 에러 없이 빌드됨
+- WebView와 ErrorPage가 QStackedLayout으로 전환됨 (기본값: WebView)
+- 시그널 연결이 정상 동작 (에러 발생 시 ErrorPage 표시)
 
 ---
 
-### Phase 4: BrowserView 수정 (homeUrl 전달)
-- [ ] Task 4-1: BrowserView.js WebView에 homeUrl prop 전달 → frontend-dev
-  - 591줄 WebView 컴포넌트에 `homeUrl={homeUrl}` prop 추가
-  - homeUrl 상태 관리 확인 (현재 BrowserView에 존재)
-- **의존성**: Phase 3 완료 필요
-- **예상 산출물**: `src/views/BrowserView.js` (수정)
-- **완료 기준**:
-  - BrowserView → WebView로 homeUrl prop 전달
-  - ErrorPage 홈 버튼 클릭 시 homeUrl로 이동 가능
-- **예상 소요 시간**: 30분
+### Phase 4: BrowserWindow 슬롯 구현
+**담당**: cpp-dev
+**예상 소요 시간**: 3~4시간
+**의존성**: Phase 3 완료 필요
+
+- [ ] Task 4-1: `onLoadError()` 슬롯 구현
+  - ErrorInfo 구조체 생성
+  - 에러 메시지 파싱으로 ErrorType 추론:
+    - "timeout" → ErrorType::Timeout
+    - "cors" / "cross-origin" → ErrorType::CorsError
+    - 기타 → ErrorType::NetworkError
+  - `errorPage_->showError(errorInfo)` 호출
+  - `stackedLayout_->setCurrentWidget(errorPage_)` 호출
+  - `qCritical()` 로그 기록
+
+- [ ] Task 4-2: `onLoadTimeout()` 슬롯 구현
+  - ErrorInfo 생성 (type: Timeout)
+  - 메시지: "페이지 로딩 시간이 초과되었습니다 (30초)"
+  - `errorPage_->showError(errorInfo)` 호출
+  - `stackedLayout_->setCurrentWidget(errorPage_)` 호출
+  - `qCritical()` 로그 기록
+
+- [ ] Task 4-3: `onRetryRequested()` 슬롯 구현
+  - QPropertyAnimation 생성 (windowOpacity: 1 → 0, 200ms)
+  - EasingCurve: `QEasingCurve::InCubic`
+  - 애니메이션 완료 후 (람다):
+    - `stackedLayout_->setCurrentWidget(webView_)`
+    - `webView_->reload()`
+  - `DeleteWhenStopped` 플래그 설정
+
+- [ ] Task 4-4: `onHomeRequested()` 슬롯 구현
+  - QPropertyAnimation 생성 (onRetryRequested와 동일)
+  - 애니메이션 완료 후:
+    - `stackedLayout_->setCurrentWidget(webView_)`
+    - `webView_->load(QUrl("https://www.google.com"))`
+  - 향후 SettingsService 연동 대비 주석 추가
+
+**예상 산출물**:
+- `src/browser/BrowserWindow.cpp` (슬롯 구현 완성)
+
+**완료 기준**:
+- 잘못된 URL 로드 시 에러 화면이 자동 표시됨
+- 재시도 버튼 클릭 시 페이지 재로드 및 페이드아웃 애니메이션
+- 홈 버튼 클릭 시 홈페이지 이동 및 페이드아웃 애니메이션
+- 로그에 에러 정보가 기록됨 (`qCritical()`)
 
 ---
 
-### Phase 5: TabContext 연동 (isError 플래그)
-- [ ] Task 5-1: BrowserView.handleLoadError 확인 → frontend-dev
-  - 현재 구현에서 isError 플래그를 TabContext에 업데이트하는지 확인
-  - 없으면 `dispatch({ type: TAB_ACTIONS.UPDATE_TAB, payload: { isError: true } })` 추가
-- [ ] Task 5-2: LoadingBar isError 반영 확인 → frontend-dev
-  - LoadingBar 컴포넌트가 isError=true 시 빨간색으로 표시되는지 확인 (F-05에서 구현됨)
-  - 정상 동작하면 수정 불필요
-- **의존성**: Phase 3, 4 완료 필요
-- **예상 산출물**: `src/views/BrowserView.js` (수정, 필요 시)
-- **완료 기준**:
-  - WebView 에러 발생 시 TabContext의 isError=true로 업데이트
-  - LoadingBar가 에러 상태를 빨간색으로 표시
-  - 탭 전환 후 에러 탭 복귀 시 에러 상태 유지
-- **예상 소요 시간**: 30분
+### Phase 5: CMakeLists.txt 업데이트 및 빌드
+**담당**: cpp-dev
+**예상 소요 시간**: 1시간
+**의존성**: Phase 4 완료 필요
+
+- [ ] Task 5-1: CMakeLists.txt 수정
+  - `src/ui/ErrorPage.cpp` 추가
+  - `src/ui/ErrorPage.h` 추가 (헤더만 포함 시)
+  - 빌드 타겟 확인
+
+- [ ] Task 5-2: 전체 빌드 검증
+  - `mkdir build && cd build`
+  - `cmake ..`
+  - `make`
+  - 컴파일 에러 없음 확인
+  - 링크 에러 없음 확인
+
+- [ ] Task 5-3: 리소스 파일 준비
+  - `resources/icons/error.png` (80x80px) 생성 또는 임시 이미지 사용
+  - Qt 리소스 시스템 (qrc) 확인
+
+**예상 산출물**:
+- `src/CMakeLists.txt` (수정)
+- `resources/icons/error.png`
+- 빌드 성공한 실행 파일
+
+**완료 기준**:
+- 전체 프로젝트가 에러 없이 빌드됨
+- 실행 시 ErrorPage 관련 심볼 에러 없음
 
 ---
 
-### Phase 6: 스타일링 및 애니메이션 최적화
-- [ ] Task 6-1: ErrorPage.module.less 최적화 → frontend-dev
-  - 페이드인/아웃 애니메이션 GPU 가속 확인 (opacity, transform 사용)
-  - 대화면 가독성 테스트 (3m 거리에서 프로젝터 화면)
-  - Moonstone 테마 스타일 가이드 준수 확인
-- [ ] Task 6-2: Spotlight 포커스 테스트 → frontend-dev
-  - 재시도 버튼 초기 포커스 자동 설정 확인
-  - 좌/우 방향키로 버튼 전환 테스트
-  - Back 키 누를 시 에러 화면 유지 (포커스 이탈 불가) 확인
-- **의존성**: Phase 2, 3 완료 필요
-- **예상 산출물**: `src/components/ErrorPage/ErrorPage.module.less` (수정)
-- **완료 기준**:
-  - 애니메이션이 부드럽게 동작 (300ms 페이드인, 200ms 페이드아웃)
-  - 3m 거리에서 에러 메시지 명확하게 읽힘
-  - Spotlight 포커스가 정상 동작 (노란색 테두리 4px)
-- **예상 소요 시간**: 1시간
+### Phase 6: 통합 테스트 (수동)
+**담당**: test-runner
+**예상 소요 시간**: 2~3시간
+**의존성**: Phase 5 완료 필요
+
+- [ ] Task 6-1: 로컬 환경 테스트
+  - 잘못된 URL 입력 (`https://invalid-domain-12345.com`) → 에러 화면 표시 확인
+  - 재시도 버튼 클릭 → 페이지 재로드 확인
+  - 홈 버튼 클릭 → 홈페이지 이동 확인
+  - 키보드 Tab 키 → 버튼 포커스 전환 확인
+  - Esc 키 (Back 키 대용) → 에러 화면 유지 확인
+
+- [ ] Task 6-2: 타임아웃 테스트
+  - 매우 느린 웹사이트 접속 또는 타임아웃 시뮬레이션
+  - 30초 후 타임아웃 에러 화면 표시 확인
+  - 재시도 시 타이머 재시작 확인
+
+- [ ] Task 6-3: 애니메이션 테스트
+  - 에러 화면 페이드인 (300ms) 부드러움 확인
+  - 재시도 시 페이드아웃 (200ms) 부드러움 확인
+  - windowOpacity 애니메이션 동작 여부 확인
+
+- [ ] Task 6-4: 로그 확인
+  - 터미널에서 `qCritical()` 로그 출력 확인
+  - 에러 메시지, URL 정보 포함 확인
+
+**예상 산출물**:
+- 테스트 결과 문서 (간단한 체크리스트)
+
+**완료 기준**:
+- 모든 테스트 케이스가 PASS
+- 치명적인 버그 없음
+- 로그가 정상 기록됨
 
 ---
 
-### Phase 7: 테스트 작성 (단위 + 통합)
-- [ ] Task 7-1: errorClassifier.js 단위 테스트 → test-runner
-  - 404, 500 페이지 타이틀 감지 테스트
-  - 에러 코드 → 메시지 변환 테스트
-  - edge case 테스트 (빈 문자열, null, undefined)
-- [ ] Task 7-2: ErrorPage 컴포넌트 단위 테스트 → test-runner
-  - 재시도 버튼 클릭 시 onRetry 콜백 호출 확인
-  - 홈 버튼 클릭 시 onGoHome 콜백 호출 확인
-  - 에러 메시지, URL 렌더링 확인
-  - 초기 포커스 테스트 (재시도 버튼)
-- [ ] Task 7-3: WebView 통합 테스트 (에러 감지) → test-runner
-  - iframe onError 트리거 시 ErrorPage 렌더링 확인
-  - 30초 타임아웃 시 ErrorPage 렌더링 확인
-  - 404 페이지 로딩 시 ErrorPage 렌더링 확인 (휴리스틱)
-- [ ] Task 7-4: WebView 통합 테스트 (재시도/홈) → test-runner
-  - 재시도 버튼 클릭 시 iframe 재로딩 확인
-  - 홈 버튼 클릭 시 homeUrl로 이동 확인
-- **의존성**: Phase 1~6 완료 필요
-- **예상 산출물**:
-  - `src/utils/__tests__/errorClassifier.test.js`
-  - `src/components/ErrorPage/__tests__/ErrorPage.test.js`
-  - `src/components/WebView/__tests__/WebView.error.test.js`
-- **완료 기준**:
-  - 모든 테스트 통과 (npm test)
-  - 코드 커버리지 85% 이상
-  - 에러 시나리오 10개 이상 커버
-- **예상 소요 시간**: 2시간
+### Phase 7: 실제 디바이스 테스트 (LG 프로젝터 HU715QW)
+**담당**: test-runner
+**예상 소요 시간**: 2~3시간
+**의존성**: Phase 6 완료 필요
+
+- [ ] Task 7-1: webOS 빌드 및 배포
+  - `ares-package build/`로 IPK 생성
+  - `ares-install --device projector {ipk파일}` 설치
+  - `ares-launch --device projector com.jsong.webosbrowser.native` 실행
+
+- [ ] Task 7-2: 리모컨 포커스 테스트
+  - 에러 화면 표시 시 재시도 버튼에 자동 포커스 확인
+  - 좌/우 방향키로 재시도 ↔ 홈 버튼 전환 확인
+  - 포커스 테두리 (4px 노란색) 가시성 확인
+  - Enter 키로 버튼 클릭 확인
+  - Back 키 무시 확인 (에러 화면 유지)
+
+- [ ] Task 7-3: 대화면 가독성 테스트
+  - 3m 거리에서 에러 제목 (48px) 가독 가능 확인
+  - 에러 메시지 (28px) 가독 가능 확인
+  - 버튼 텍스트 (24px) 가독 가능 확인
+  - URL 텍스트 (22px) 가독 가능 확인
+
+- [ ] Task 7-4: 성능 측정
+  - 에러 발생 → 화면 표시 시간 (목표: 500ms 이내)
+  - 재시도 클릭 → 로딩 시작 시간 (목표: 300ms 이내)
+  - 애니메이션 프레임 드랍 여부 (60fps 목표)
+
+- [ ] Task 7-5: 실제 네트워크 에러 테스트
+  - Wi-Fi 비활성화 후 페이지 로드 → 에러 화면 확인
+  - Wi-Fi 활성화 후 재시도 → 성공 확인
+  - 타임아웃 시나리오 (느린 서버) 확인
+
+**예상 산출물**:
+- 실제 디바이스 테스트 리포트 (`docs/specs/error-handling/test-report.md`)
+- 스크린샷 (에러 화면, 포커스 상태)
+
+**완료 기준**:
+- 리모컨 조작이 모든 시나리오에서 정상 동작
+- 3m 거리 가독성 충족
+- 성능 목표 달성 (에러 화면 500ms, 재시도 300ms)
+- 애니메이션이 부드럽게 동작 (60fps 또는 최소 30fps)
 
 ---
 
-### Phase 8: 코드 + 문서 리뷰
-- [ ] Task 8-1: 코드 리뷰 → code-reviewer
-  - ErrorPage 컴포넌트 PropTypes 검증
-  - WebView 수정사항 검증 (에러 감지, 재시도, 홈 버튼)
-  - 에러 로깅 확인 (logger.error)
-  - Moonstone 스타일 가이드 준수 확인
-- [ ] Task 8-2: 문서 리뷰 → code-reviewer
-  - requirements.md, design.md, plan.md 일관성 확인
-  - 기술 설계서 아키텍처 결정 구현 확인
-  - 수용 기준(AC-1~AC-10) 충족 확인
-- [ ] Task 8-3: 리팩토링 (필요 시) → frontend-dev
-  - 리뷰 피드백 반영
-  - 코드 중복 제거
-  - 주석 추가 (에러 처리 로직)
-- **의존성**: Phase 1~7 완료 필요
-- **예상 산출물**: 리뷰 코멘트, 리팩토링 커밋
-- **완료 기준**:
-  - code-reviewer의 승인 (Approve)
-  - 요구사항 분석서의 수용 기준(AC) 10개 모두 충족
-  - ESLint 검사 통과
-- **예상 소요 시간**: 1시간
+### Phase 8: 코드 리뷰 및 문서화
+**담당**: code-reviewer, doc-writer
+**예상 소요 시간**: 2~3시간
+**의존성**: Phase 7 완료 필요
+
+- [ ] Task 8-1: 코드 리뷰 (code-reviewer)
+  - ErrorPage 클래스 구조 검증
+    - enum class 사용 적절성
+    - ErrorInfo 구조체 설계
+    - 메모리 관리 (Qt parent-child)
+  - BrowserWindow 통합 검증
+    - QStackedLayout 사용 적절성
+    - 시그널/슬롯 연결 정확성
+    - 애니메이션 메모리 관리 (DeleteWhenStopped)
+  - 코딩 컨벤션 준수 확인
+    - 주석 언어 (한국어)
+    - 네이밍 (camelCase, PascalCase)
+    - 들여쓰기 (4 스페이스)
+  - 보안 이슈 확인
+    - URL truncate (XSS 방지)
+    - 에러 메시지 민감 정보 노출 여부
+
+- [ ] Task 8-2: 리팩토링 제안 (code-reviewer)
+  - 중복 코드 제거 (onRetryRequested, onHomeRequested)
+  - 상수 추출 (애니메이션 시간, URL 길이 제한 등)
+  - 헬퍼 메서드 추가 (필요시)
+
+- [ ] Task 8-3: 문서화 (doc-writer)
+  - `docs/dev-log.md` 업데이트
+    - Phase별 작업 내용 기록
+    - 이슈 및 해결 방법 기록
+  - `CHANGELOG.md` 업데이트
+    - `feat: F-10 에러 처리 기능 구현` 항목 추가
+    - 세부 기능 목록 (ErrorPage 클래스, BrowserWindow 통합, 리모컨 포커스, 애니메이션)
+  - 코드 주석 보완
+    - ErrorPage.h에 Doxygen 스타일 주석 확인
+    - BrowserWindow 슬롯 메서드에 주석 추가
+
+- [ ] Task 8-4: 설계 문서 검증 (code-reviewer)
+  - requirements.md와 실제 구현 일치 확인
+  - design.md의 클래스 구조와 실제 코드 일치 확인
+  - 미구현 기능 (Out of Scope) 확인
+
+**예상 산출물**:
+- 코드 리뷰 리포트 (간단한 체크리스트 또는 주석)
+- `docs/dev-log.md` (업데이트)
+- `CHANGELOG.md` (업데이트)
+
+**완료 기준**:
+- 코드 리뷰에서 치명적인 이슈 없음
+- 모든 파일에 적절한 주석 존재
+- 문서가 최신 상태로 업데이트됨
 
 ---
 
 ## 3. 태스크 의존성
 
 ```
-Phase 1 (errorClassifier)
+Phase 1 (ErrorPage 기본 UI)
     │
-    ├───────────────┐
-    │               │
-    ↓               ↓
-Phase 2 (ErrorPage)  Phase 3 (WebView 수정)
-    │               │
-    └───────┬───────┘
-            ↓
-    Phase 4 (BrowserView)
-            ↓
-    Phase 5 (TabContext)
-            ↓
-    Phase 6 (스타일링)
-            ↓
-    Phase 7 (테스트)
-            ↓
-    Phase 8 (리뷰)
+    ▼
+Phase 2 (ErrorPage 로직)
+    │
+    ▼
+Phase 3 (BrowserWindow 통합)
+    │
+    ▼
+Phase 4 (BrowserWindow 슬롯)
+    │
+    ▼
+Phase 5 (빌드 검증)
+    │
+    ▼
+Phase 6 (통합 테스트)
+    │
+    ▼
+Phase 7 (디바이스 테스트)
+    │
+    ▼
+Phase 8 (코드 리뷰 및 문서화)
 ```
 
-**병렬 실행 가능 구간**:
-- Phase 2 (ErrorPage) 와 Phase 3-1~3-3 (WebView 상태 관리, 핸들러)은 독립적이므로 병렬 실행 가능
-- 단, Phase 3-4 (휴리스틱 에러 감지)는 Phase 1 (errorClassifier) 완료 필요
-- Phase 3-2 (ErrorPage 통합)는 Phase 2 (ErrorPage) 완료 필요
+**순차적 의존성**: 모든 Phase가 순차적으로 진행되어야 합니다. 병렬 실행 불가능.
 
 ---
 
 ## 4. 병렬 실행 판단
 
-### 병렬 실행 가능 여부
-**NO - 순차 개발 권장**
+### 병렬 가능한 태스크
+**없음**
 
-### 판단 근거
-1. **컴포넌트 수**: 주요 컴포넌트가 2개 (ErrorPage, WebView 수정)로 적음
-2. **의존성**: Phase 3 (WebView)이 Phase 1, 2의 결과물을 모두 참조해야 함
-3. **통합 테스트 중요도**: ErrorPage와 WebView의 긴밀한 통합이 핵심
-4. **구현 복잡도**: Medium (유틸리티 + 컴포넌트 + 통합)
-5. **예상 총 소요 시간**: 10시간 (1인 개발자가 순차 작업 시 1~2일)
+이유:
+- Phase 1~2는 ErrorPage 클래스의 기본 구현 및 로직이며, 서로 의존적입니다.
+- Phase 3~4는 BrowserWindow 통합 및 슬롯 구현이며, ErrorPage 완성 후 진행 가능합니다.
+- Phase 5는 전체 빌드 검증으로, 모든 코드 구현 완료 후 진행됩니다.
+- Phase 6~7은 테스트 단계로, 빌드 완료 후 순차적으로 진행됩니다.
+- Phase 8은 최종 검증으로, 모든 테스트 완료 후 진행됩니다.
 
-### Agent Team 사용하지 않는 이유
-- **통합 테스트 부담**: 병렬 작업 후 merge 시 통합 테스트 복잡도 증가
-- **코드 충돌 위험**: WebView.js 파일을 여러 에이전트가 동시 수정 시 충돌 가능성
-- **단순성 유지**: 1명의 frontend-dev가 전체 흐름을 이해하고 구현하는 것이 효율적
+### Agent Team 사용 권장 여부
+**권장하지 않음 (단일 에이전트 사용)**
 
-### 순차 개발 권장 이유
-- **일관된 에러 처리 로직**: 에러 감지 → 분류 → UI 표시가 하나의 플로우로 연결됨
-- **빠른 피드백**: Phase 1~3을 연속으로 구현하며 즉시 통합 테스트 가능
-- **리팩토링 용이성**: 중간에 설계 변경 시 빠르게 대응 가능
+**근거**:
+1. **단일 컴포넌트**: ErrorPage 클래스 1개 + BrowserWindow 수정만 필요
+2. **순차적 의존성**: Phase 1~8이 모두 순차적으로 진행되어야 함
+3. **낮은 복잡도**: 설계서에서 예상 소요 시간 1~1.5일로, 단일 개발자가 처리 가능
+4. **적은 파일 수**:
+   - 새 파일: 2개 (ErrorPage.h, ErrorPage.cpp)
+   - 수정 파일: 2개 (BrowserWindow.h, BrowserWindow.cpp)
+   - 총 4개 파일만 다룸
+5. **충돌 위험 낮음**: ErrorPage는 독립적인 새 파일, BrowserWindow 수정도 명확한 영역
+6. **테스트 의존성**: 통합 테스트는 전체 구현 완료 후에만 가능
 
----
+### Agent Team이 유용한 경우 (참고용)
+만약 다음 조건이라면 Agent Team을 고려할 수 있습니다:
+- ErrorPage 외에 추가로 3개 이상의 독립 컴포넌트 구현 필요 (예: OfflinePage, LoadErrorDialog 등)
+- 프론트엔드/백엔드가 분리된 구조 (Native App은 단일 레이어)
+- 병렬로 작업 가능한 독립적인 모듈 (예: 에러 통계 수집 서비스 + UI)
 
-## 5. 리스크
+### 권장 실행 방식
+```
+/fullstack-feature F-10 에러 처리
+```
 
-| 리스크 | 영향도 | 발생 가능성 | 대응 방안 |
-|--------|--------|------------|----------|
-| **iframe 제약으로 HTTP 상태 코드 접근 불가** | High | 확정됨 | 휴리스틱 방식(페이지 타이틀 기반) 사용. 정확도 제한 수용. |
-| **휴리스틱 404/500 감지 정확도 낮음** | Medium | High | 대표 사이트(YouTube, Netflix, Google) 테스트 후 키워드 튜닝. 완벽한 정확도는 포기. |
-| **에러 화면 애니메이션 성능 저하** | Medium | Low | GPU 가속 속성(opacity, transform) 사용. will-change 힌트 추가. |
-| **Spotlight 포커스 이탈 문제** | Medium | Medium | Back 키 이벤트 핸들러로 포커스 트랩 구현. Moonstone 포커스 API 활용. |
-| **에러 상태 탭 전환 시 유지 실패** | Low | Low | TabContext에 isError 플래그 저장. Phase 5에서 검증. |
-| **homeUrl 미전달 버그** | Low | Low | BrowserView에서 homeUrl prop 전달 확인. PropTypes로 검증. |
-| **테스트 커버리지 부족** | Medium | Medium | Phase 7에서 에러 시나리오 10개 이상 테스트 작성. 통합 테스트 우선. |
-
----
-
-## 6. 예상 복잡도
-
-### 전체 복잡도: **Medium**
-
-| Phase | 복잡도 | 이유 |
-|-------|--------|------|
-| Phase 1 (errorClassifier) | Low | 단순 문자열 매칭 로직 |
-| Phase 2 (ErrorPage) | Medium | Moonstone 컴포넌트 + Spotlight 포커스 관리 |
-| Phase 3 (WebView 수정) | High | 에러 감지, 휴리스틱 로직, 상태 관리 통합 |
-| Phase 4 (BrowserView) | Low | 단순 prop 전달 |
-| Phase 5 (TabContext) | Low | 기존 구현 확인 (수정 최소) |
-| Phase 6 (스타일링) | Low | CSS 애니메이션 |
-| Phase 7 (테스트) | Medium | 통합 테스트 시나리오 다양 |
-| Phase 8 (리뷰) | Low | 문서 일관성 검증 |
+또는 수동 단계별 실행:
+```
+/dev-cycle F-10
+```
 
 ---
 
-## 7. 테스트 전략
+## 5. 리스크 및 대응 방안
 
-### 7.1 단위 테스트 (Jest)
-**대상**: errorClassifier.js, ErrorPage 컴포넌트
-
-| 테스트 항목 | 범위 |
-|-----------|------|
-| errorClassifier.classifyErrorByTitle() | 404, 500, null 케이스 |
-| errorClassifier.getErrorMessage() | 모든 에러 코드 (-1, -2, -3, 404, 500, -99) |
-| ErrorPage 버튼 클릭 | onRetry, onGoHome 콜백 호출 확인 |
-| ErrorPage 렌더링 | errorMessage, url, 버튼 텍스트 표시 확인 |
-| ErrorPage 초기 포커스 | 재시도 버튼에 포커스 확인 |
-
-**목표 커버리지**: 90%
-
-### 7.2 통합 테스트 (Enact Testing Library)
-**대상**: WebView + ErrorPage 통합
-
-| 테스트 시나리오 | 검증 항목 |
-|---------------|----------|
-| 네트워크 에러 | iframe onError → ErrorPage 렌더링 → errorCode=-1 |
-| 타임아웃 에러 | 30초 경과 → ErrorPage 렌더링 → errorCode=-2 |
-| 404 휴리스틱 | 페이지 타이틀 "404 Not Found" → errorCode=404 |
-| 재시도 성공 | 재시도 버튼 클릭 → iframe 재로딩 → ErrorPage 제거 |
-| 홈 이동 | 홈 버튼 클릭 → homeUrl로 이동 → ErrorPage 제거 |
-| 에러 로깅 | 에러 발생 시 logger.error() 호출 확인 |
-
-**목표 커버리지**: 85%
-
-### 7.3 E2E 테스트 (수동, 프로젝터 실제 환경)
-**대상**: 리모컨 입력 시나리오
-
-| 시나리오 | 리모컨 입력 | 예상 결과 |
-|----------|-------------|----------|
-| 에러 발생 | 잘못된 URL 입력 | ErrorPage 표시, 재시도 버튼 포커스 |
-| 재시도 | 선택 버튼 (재시도) | iframe 재로딩 시작 |
-| 홈 이동 | 우 방향키 → 선택 버튼 (홈) | 홈페이지로 이동 |
-| 에러 탭 전환 | 다른 탭 이동 → 에러 탭 복귀 | 에러 화면 유지 |
-| 포커스 트랩 | Back 키 | 에러 화면 유지 (포커스 이탈 안 됨) |
-
-**테스트 사이트**:
-- 네트워크 에러: `http://invalid-domain-12345.com`
-- 타임아웃: `https://httpstat.us/200?sleep=35000`
-- 404: `https://www.google.com/404`
-- 500: `https://httpstat.us/500`
+| 리스크 | 영향도 | 발생 확률 | 대응 방안 |
+|--------|--------|----------|----------|
+| **Qt windowOpacity 애니메이션 미작동** | 중 | 중 | QStackedLayout 내부 위젯은 windowOpacity가 동작하지 않을 수 있음. 대응: QGraphicsOpacityEffect 사용 또는 애니메이션 비활성화 |
+| **리모컨 포커스 스타일 미표시** | 중 | 중 | webOS Qt 빌드에서 QSS focus 스타일이 플랫폼 의존적일 수 있음. 대응: QPalette 기반 스타일 또는 커스텀 포커스 인디케이터 추가 |
+| **HTTP 상태 코드 감지 불가** | 낮음 | 높음 | Qt WebEngineView는 404, 500 등을 정상 로딩으로 처리함. 대응: 현 단계에서는 네트워크 에러/타임아웃만 처리 (범위 외로 명시) |
+| **타임아웃 시간 부적절** | 낮음 | 중 | 30초 타임아웃이 너무 길거나 짧을 수 있음. 대응: SettingsService에서 설정 가능하도록 향후 확장 |
+| **에러 메시지 파싱 오류** | 낮음 | 중 | Qt가 제공하는 errorString이 일관되지 않을 수 있음. 대응: 기본값 NetworkError로 처리, 향후 세분화 |
+| **애니메이션 성능 저하** | 중 | 낮음 | 프로젝터 GPU가 약한 경우 애니메이션 끊김. 대응: EasingCurve 단순화 또는 애니메이션 비활성화 옵션 추가 |
+| **메모리 누수 (애니메이션 객체)** | 높음 | 낮음 | QPropertyAnimation 객체가 자동 삭제 안 될 수 있음. 대응: DeleteWhenStopped 플래그 필수, parent 설정 금지 |
+| **BrowserWindow 레이아웃 충돌** | 중 | 낮음 | 기존 레이아웃(BookmarkPanel 등)과 충돌 가능. 대응: QStackedLayout을 별도 contentWidget에 격리 |
 
 ---
 
-## 8. 완료 기준 (Definition of Done)
+## 6. 예상 총 소요 시간
 
-### Phase별 완료 기준
-- [x] Phase 1: errorClassifier.js 단위 테스트 통과, 커버리지 90%
-- [x] Phase 2: ErrorPage 컴포넌트 독립 렌더링 가능, Storybook 테스트
-- [x] Phase 3: WebView 에러 감지 → ErrorPage 렌더링 통합 완료
-- [x] Phase 4: BrowserView → WebView homeUrl prop 전달 확인
-- [x] Phase 5: TabContext isError 플래그 업데이트 확인
-- [x] Phase 6: 3m 거리에서 대화면 가독성 테스트 통과
-- [x] Phase 7: 단위 + 통합 테스트 85% 이상 커버리지
-- [x] Phase 8: code-reviewer 승인, ESLint 통과
+| Phase | 소요 시간 |
+|-------|----------|
+| Phase 1: ErrorPage 기본 UI | 4~5시간 |
+| Phase 2: ErrorPage 로직 | 3~4시간 |
+| Phase 3: BrowserWindow 통합 | 3~4시간 |
+| Phase 4: BrowserWindow 슬롯 | 3~4시간 |
+| Phase 5: 빌드 검증 | 1시간 |
+| Phase 6: 통합 테스트 | 2~3시간 |
+| Phase 7: 디바이스 테스트 | 2~3시간 |
+| Phase 8: 코드 리뷰 및 문서화 | 2~3시간 |
+| **총합** | **20~27시간 (2.5~3.5일)** |
 
-### 전체 기능 완료 기준
-1. **요구사항 충족**: requirements.md의 수용 기준(AC-1~AC-10) 모두 충족
-2. **테스트 통과**: `npm test` 모두 통과, 커버리지 85% 이상
-3. **코드 품질**: ESLint 검사 통과, PropTypes 검증 완료
-4. **문서화**: ErrorPage 컴포넌트 문서 작성 (`docs/components/ErrorPage.md`)
-5. **실제 환경 테스트**: 프로젝터 실제 환경에서 리모컨 E2E 테스트 5개 시나리오 통과
-6. **리뷰 승인**: code-reviewer의 Approve
+**주의**: 설계서에서는 1~1.5일로 예상했으나, 테스트 및 문서화 포함 시 2.5~3.5일 소요 예상.
 
 ---
 
-## 9. 롤백 계획
+## 7. 완료 체크리스트
 
-### 롤백 트리거
-- 테스트 실패율 30% 이상
-- 프로젝터 실제 환경에서 Critical 버그 발견 (예: 앱 크래시)
-- iframe 제약으로 인한 구현 불가 판단
+### 기능 완성도
+- [ ] ErrorPage 클래스가 정상 동작 (에러 화면 표시)
+- [ ] 에러 타입별 제목 및 메시지 표시
+- [ ] 재시도 버튼으로 페이지 재로드
+- [ ] 홈 버튼으로 홈페이지 이동
+- [ ] 페이드인/아웃 애니메이션 동작
+- [ ] 리모컨 포커스 관리 (방향키, Enter, Back)
+- [ ] 에러 로깅 (`qCritical()`)
 
-### 롤백 절차
-1. Phase 3~8 구현 코드 롤백
-2. WebView.js 기존 인라인 에러 UI 복구 (377~397줄)
-3. 요구사항 재검토 (iframe 제약 수용 범위 재조정)
-4. 대안 설계 (예: 에러 타입 단순화, ErrorPage 제거)
+### 통합 검증
+- [ ] BrowserWindow에 QStackedLayout으로 통합
+- [ ] WebView의 `loadError`, `loadTimeout` 시그널 연결
+- [ ] 에러 발생 시 자동으로 ErrorPage 표시
+- [ ] 로딩 성공 시 자동으로 WebView로 전환
+
+### 테스트
+- [ ] 로컬 환경에서 모든 시나리오 PASS
+- [ ] 실제 디바이스에서 리모컨 조작 PASS
+- [ ] 3m 거리 가독성 확인
+- [ ] 성능 목표 달성 (500ms, 300ms)
+
+### 문서화
+- [ ] `docs/dev-log.md` 업데이트
+- [ ] `CHANGELOG.md` 업데이트
+- [ ] 코드 주석 충분
+- [ ] 테스트 리포트 작성
 
 ---
 
-## 10. 변경 이력
+## 8. 변경 이력
 
-| 날짜 | 변경 내용 | 사유 |
-|------|----------|------|
-| 2026-02-13 | 초안 작성 | F-10 구현 계획 수립 |
+| 날짜 | 변경 내용 | 작성자 | 사유 |
+|------|-----------|--------|------|
+| 2026-02-13 | 초안 작성 (Web App 기반) | product-manager | F-10 구현 계획 수립 |
+| 2026-02-14 | Native App 관점으로 전면 업데이트 | product-manager | React/Enact → C++/Qt 기술 스택 변경 |
 
 ---
 
 ## 다음 단계
 
-이 구현 계획서를 기반으로 frontend-dev 에이전트가 Phase 1부터 순차적으로 구현합니다.
+구현 계획서가 승인되면 다음과 같이 진행합니다:
 
-### 구현 시작 명령어
+1. **cpp-dev 에이전트 호출** (Phase 1~5):
+   ```
+   /fullstack-feature F-10 에러 처리
+   ```
+
+2. **test-runner 에이전트 호출** (Phase 6~7):
+   - 로컬 테스트 실행
+   - 실제 디바이스 테스트 실행
+
+3. **code-reviewer 에이전트 호출** (Phase 8):
+   - 코드 리뷰 수행
+   - 리팩토링 제안
+
+4. **doc-writer 에이전트 호출** (Phase 8):
+   - 개발 로그 업데이트
+   - CHANGELOG 업데이트
+
+5. **완료 확인**:
+   - 모든 Phase 완료
+   - 체크리스트 검증
+   - 다음 기능 (F-11 설정 화면) 진행
+
+---
+
+## 부록: 에러 시나리오별 동작 흐름
+
+### 시나리오 1: 네트워크 연결 실패
 ```
-/fullstack-feature F-10 에러 처리
+사용자: 잘못된 URL 입력 (https://invalid-domain.com)
+   ↓
+URLBar: load(url) → WebView
+   ↓
+WebView: loadStarted() (타임아웃 타이머 시작)
+   ↓
+Qt WebEngineView: DNS 실패
+   ↓
+WebView: loadFinished(false) → loadError("Host not found")
+   ↓
+BrowserWindow: onLoadError()
+   ↓
+ErrorPage: showError(NetworkError, "네트워크 연결을 확인해주세요", url)
+   ↓
+QStackedLayout: setCurrentWidget(errorPage_)
+   ↓
+ErrorPage: 페이드인 애니메이션 (300ms)
+   ↓
+사용자: 재시도 버튼 클릭
+   ↓
+ErrorPage: retryRequested() signal
+   ↓
+BrowserWindow: onRetryRequested()
+   ↓
+QPropertyAnimation: 페이드아웃 (200ms)
+   ↓
+WebView: reload()
+   ↓
+(성공 시) QStackedLayout: setCurrentWidget(webView_)
 ```
 
-또는 수동으로 Phase별 구현:
+### 시나리오 2: 타임아웃
 ```
-Phase 1: errorClassifier.js 유틸리티 구현
-Phase 2: ErrorPage 컴포넌트 구현
-Phase 3: WebView 수정 (에러 감지, ErrorPage 통합)
-...
+사용자: 느린 웹사이트 접속 (https://very-slow-server.com)
+   ↓
+WebView: loadStarted() (타임아웃 타이머 30초 시작)
+   ↓
+Qt WebEngineView: 로딩 중... (30초 경과)
+   ↓
+WebView: timeout 타이머 트리거 → loadTimeout() signal
+   ↓
+BrowserWindow: onLoadTimeout()
+   ↓
+ErrorPage: showError(Timeout, "페이지 로딩 시간이 초과되었습니다 (30초)", url)
+   ↓
+QStackedLayout: setCurrentWidget(errorPage_)
+   ↓
+사용자: 홈 버튼 클릭
+   ↓
+ErrorPage: homeRequested() signal
+   ↓
+BrowserWindow: onHomeRequested()
+   ↓
+QPropertyAnimation: 페이드아웃 (200ms)
+   ↓
+WebView: load("https://www.google.com")
+   ↓
+QStackedLayout: setCurrentWidget(webView_)
 ```
+
+---
+
+## 부록: QStackedLayout vs 오버레이 비교
+
+| 항목 | QStackedLayout | QWidget 오버레이 |
+|------|---------------|-----------------|
+| **구현 복잡도** | 간단 (setCurrentWidget) | 복잡 (Z-order, 위치 계산) |
+| **메모리 사용** | 낮음 (하나만 활성) | 중간 (둘 다 활성) |
+| **포커스 관리** | 명확 (하나만 포커스) | 복잡 (오버레이 포커스 제어) |
+| **애니메이션** | 가능 (위젯 전환) | 가능 (투명도 조절) |
+| **사용 사례** | 전체 화면 전환 | 부분 오버레이 (BookmarkPanel) |
+
+**결정**: ErrorPage는 전체 화면을 덮어야 하므로 QStackedLayout 선택.
+
+---
+
+## 부록: 코드 예시 (핵심 메서드)
+
+### ErrorPage::showError() 구현 예시
+
+```cpp
+void ErrorPage::showError(ErrorType type, const QString &errorMessage, const QUrl &url) {
+    // 에러 정보 저장
+    currentError_.type = type;
+    currentError_.errorMessage = errorMessage;
+    currentError_.url = url;
+    currentError_.timestamp = QDateTime::currentDateTime();
+
+    // 에러 타입별 제목 설정
+    QString title;
+    switch (type) {
+        case ErrorType::NetworkError:
+            title = "네트워크 연결 실패";
+            break;
+        case ErrorType::Timeout:
+            title = "로딩 시간 초과";
+            break;
+        case ErrorType::CorsError:
+            title = "보안 정책 오류";
+            break;
+        case ErrorType::UnknownError:
+        default:
+            title = "페이지 로딩 오류";
+            break;
+    }
+
+    // UI 업데이트
+    iconLabel_->setPixmap(QPixmap(getErrorIcon(type)));
+    titleLabel_->setText(title);
+    messageLabel_->setText(errorMessage);
+    urlLabel_->setText(truncateUrl(url));
+
+    // 재시도 버튼에 포커스
+    retryButton_->setFocus(Qt::OtherFocusReason);
+
+    // 위젯 표시
+    show();
+}
+```
+
+### BrowserWindow::onLoadError() 구현 예시
+
+```cpp
+void BrowserWindow::onLoadError(const QString &errorString) {
+    // 에러 타입 추론
+    ErrorType type = ErrorType::NetworkError;
+    if (errorString.contains("timeout", Qt::CaseInsensitive)) {
+        type = ErrorType::Timeout;
+    } else if (errorString.contains("cors", Qt::CaseInsensitive)) {
+        type = ErrorType::CorsError;
+    }
+
+    // ErrorPage 표시
+    errorPage_->showError(type, errorString, webView_->url());
+    stackedLayout_->setCurrentWidget(errorPage_);
+
+    // 로그 기록
+    qCritical() << "Page load error:"
+                << "type=" << static_cast<int>(type)
+                << "message=" << errorString
+                << "url=" << webView_->url().toString();
+}
+```
+
+---
+
+## 부록: 파일 체크리스트
+
+### 새로 생성할 파일
+- [ ] `src/ui/ErrorPage.h`
+- [ ] `src/ui/ErrorPage.cpp`
+- [ ] `resources/icons/error.png`
+
+### 수정할 파일
+- [ ] `src/browser/BrowserWindow.h`
+- [ ] `src/browser/BrowserWindow.cpp`
+- [ ] `src/CMakeLists.txt`
+
+### 문서 파일
+- [ ] `docs/dev-log.md` (업데이트)
+- [ ] `CHANGELOG.md` (업데이트)
+- [ ] `docs/specs/error-handling/test-report.md` (새로 작성)
+
+---
+
+이상으로 F-10 에러 처리 기능의 구현 계획서를 완료합니다.
