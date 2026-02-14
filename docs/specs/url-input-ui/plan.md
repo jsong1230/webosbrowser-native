@@ -1,750 +1,543 @@
-# URL 입력 UI — 구현 계획서
+# URL 입력 UI — 구현 계획서 (Native App)
 
 ## 1. 참조 문서
-- 요구사항 분석서: `docs/specs/url-input-ui/requirements.md`
-- 기술 설계서: `docs/specs/url-input-ui/design.md`
-- CLAUDE.md: `/Users/jsong/dev/jsong1230-github/webosbrowser/CLAUDE.md`
-- 프로젝트 기획: `docs/project/features.md`
+- 요구사항 분석서: docs/specs/url-input-ui/requirements.md
+- 기술 설계서: docs/specs/url-input-ui/design.md
+- PRD: docs/project/prd.md
+- 기능 백로그: docs/project/features.md
+- CLAUDE.md: 프로젝트 규칙 및 코딩 컨벤션
 
 ---
 
 ## 2. 구현 Phase
 
-### Phase 1: URL 검증 유틸리티 구현
-**담당**: frontend-dev
-**예상 시간**: 30분
-**의존성**: 없음
+### Phase 1: 기본 인프라 구축
+**담당자**: cpp-dev
+**예상 소요 시간**: 2시간
+**의존성**: F-02 (WebView 통합) 완료 필요
 
-#### 작업 내용
-- [ ] Task 1-1: `src/utils/urlValidator.js` 파일 생성
-  - `validateAndFormatUrl(input)` 함수 구현
-    - 프로토콜 포함 URL 검증 (http://, https://)
-    - 도메인 형식 감지 및 자동 프로토콜 추가
-    - localhost/IP 주소 지원
-    - 검색어 감지 (현재는 null 반환, F-09 연동 시 확장)
-  - `isValidUrl(url)` 함수 구현
-  - `isSecureUrl(url)` 함수 구현 (HTTPS 체크)
-  - JSDoc 주석 작성
-- [ ] Task 1-2: 단위 테스트 작성
-  - `src/__tests__/utils/urlValidator.test.js` 생성
-  - 테스트 케이스:
-    - 프로토콜 포함 URL (http://, https://)
-    - 프로토콜 없는 도메인 (google.com → http://google.com)
-    - localhost 및 IP 주소
-    - 유효하지 않은 입력 (null, 빈 문자열, 특수문자만)
-    - 경로 및 쿼리 파라미터 포함 URL
-  - `npm test` 실행 및 통과 확인
+#### Task 1.1: URLValidator 유틸리티 구현
+- [ ] src/utils/URLValidator.h 헤더 작성
+  - 정적 메서드 선언: `isValid`, `autoComplete`, `isSearchQuery`, `isDomainFormat`
+  - QRegularExpression 기반 도메인 정규표현식 선언
+- [ ] src/utils/URLValidator.cpp 구현
+  - `isValid()`: QUrl::isValid() 기반 URL 유효성 검증
+  - `autoComplete()`: QUrl::fromUserInput() 활용, 프로토콜 자동 추가 (http://)
+  - `isSearchQuery()`: 공백 포함 또는 도메인 패턴 미일치 시 true 반환
+  - `isDomainFormat()`: 정규표현식으로 도메인 패턴 검증
+    - 패턴: `^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(\/.*)?$`
+    - 예: `google.com`, `www.example.com/path`
+- [ ] CMakeLists.txt 수정
+  - SOURCES에 `src/utils/URLValidator.cpp` 추가 (이미 존재하는지 확인)
 
-#### 예상 산출물
-- `src/utils/urlValidator.js`
-- `src/__tests__/utils/urlValidator.test.js`
+**산출물**:
+- src/utils/URLValidator.h
+- src/utils/URLValidator.cpp
+- 수정된 CMakeLists.txt (필요 시)
 
-#### 완료 기준
-- 모든 단위 테스트 통과 (100% 커버리지)
-- URL 검증 로직이 requirements.md의 FR-4 요구사항 충족
-- JSDoc 주석으로 함수 인터페이스 문서화
+**완료 기준**:
+- URLValidator::isValid("http://google.com") → true
+- URLValidator::autoComplete("google.com") → QUrl("http://google.com")
+- URLValidator::isSearchQuery("hello world") → true
+- URLValidator::isDomainFormat("google.com") → true
 
 ---
 
-### Phase 2: VirtualKeyboard 컴포넌트 구현
-**담당**: frontend-dev
-**예상 시간**: 2시간
-**의존성**: 없음 (Phase 1과 병렬 가능)
+### Phase 2: VirtualKeyboard 구현
+**담당자**: cpp-dev
+**예상 소요 시간**: 4시간
+**의존성**: Phase 1 완료 불필요 (독립적)
 
-#### 작업 내용
-- [ ] Task 2-1: 키보드 레이아웃 정의
-  - `src/components/VirtualKeyboard/` 디렉토리 생성
-  - `keyboardLayout.js` 생성
-    - `KEYBOARD_LAYOUT` 배열 정의 (QWERTY 4행)
-      - 1행: 숫자 및 특수문자 (1-0, -, =)
-      - 2행: 영문 상단 (q-p, /, :)
-      - 3행: 영문 중단 (a-l, ., _)
-      - 4행: 영문 하단 (z-m, ?, &, =)
-    - `CONTROL_KEYS` 배열 정의 (5행)
-      - 스페이스 (4칸 폭), 백스페이스 (2칸), 전체삭제 (2칸), 확인 (2칸), 취소 (2칸)
-  - export 문 추가
-- [ ] Task 2-2: VirtualKeyboard 컴포넌트 구현
-  - `VirtualKeyboard.js` 생성
-  - Props 인터페이스 정의
-    - `onInput`: 문자 입력 콜백
-    - `onBackspace`: 백스페이스 콜백
-    - `onSpace`: 스페이스 콜백
-    - `onEnter`: 확인 버튼 콜백
-    - `onCancel`: 취소 버튼 콜백
-    - `visible`: 키보드 표시 여부
-    - `className`: 스타일 커스터마이징
-  - PropTypes 선언 및 defaultProps 설정
-  - 상태 관리
-    - `focusedKey`: 현재 포커스된 키 위치 (row, col)
-    - `keyRefs`: 각 키의 DOM 참조 (useRef)
-  - 렌더링 구조
-    - KEYBOARD_LAYOUT 매핑하여 키 그리드 생성
-    - 각 키는 Moonstone `Button` + `Spottable` HOC 사용
-    - CONTROL_KEYS 매핑하여 제어 키 생성
-    - SpotlightContainerDecorator로 키보드 영역 격리
-      - `enterTo: 'default-element'`
-      - `defaultElement: '[data-key="q"]'`
-      - `restrict: 'self-only'`
-      - `spotlightId: "virtual-keyboard"`
-  - 이벤트 핸들러
-    - `handleKeyPress(char)`: onInput 콜백 호출
-    - `handleControlKey(keyId)`: 제어 키별 분기 처리
-  - logger 통합 (디버그 로그)
-- [ ] Task 2-3: VirtualKeyboard 스타일 구현
-  - `VirtualKeyboard.module.less` 생성
-  - 레이아웃 스타일
-    - `.keyboard`: 화면 하단 고정 (position: absolute, bottom: 0)
-    - `.row`: flexbox 가운데 정렬
-    - `.key`: 최소 60x60px, 폰트 20px, 마진 4px
-    - `.controlRow`: 제어 키 영역
-    - `.controlKey`: 폭 가변 (span2: 120px, span4: 240px)
-  - 포커스 스타일
-    - Spotlight 포커스 시: 테두리 3px, 색상 #00aaff, box-shadow
-    - active 상태: 배경색 어둡게
-  - 색상 테마: 다크 모드 (배경 #1a1a1a, 키 #3a3a3a)
-- [ ] Task 2-4: index.js 생성 및 export
-  - `src/components/VirtualKeyboard/index.js` 생성
-  - VirtualKeyboard 컴포넌트 export
-- [ ] Task 2-5: 단위 테스트 작성
-  - `src/__tests__/components/VirtualKeyboard.test.js` 생성
-  - 테스트 케이스:
-    - 키보드 렌더링 (visible=true)
-    - 키보드 숨김 (visible=false)
-    - 문자 키 클릭 시 onInput 콜백 호출
-    - 제어 키 클릭 시 해당 콜백 호출 (onBackspace, onSpace, onEnter, onCancel)
-    - QWERTY 레이아웃 모든 키 존재 확인
-  - Enact Testing Library 사용
+#### Task 2.1: VirtualKeyboard 클래스 헤더 작성
+- [ ] src/ui/VirtualKeyboard.h 생성
+  - QWidget 상속 클래스 선언
+  - 시그널 선언: `characterEntered`, `backspacePressed`, `enterPressed`, `spacePressed`, `closeRequested`
+  - keyPressEvent 오버라이드 선언
+  - moveFocusInGrid, getCurrentFocusPosition 프라이빗 메서드 선언
+  - 멤버 변수: `QGridLayout *keyboardLayout_`, `QVector<QVector<QPushButton*>> keys_`
+  - 상수 정의: `ROWS = 4`, `COLS = 11`
 
-#### 예상 산출물
-- `src/components/VirtualKeyboard/keyboardLayout.js`
-- `src/components/VirtualKeyboard/VirtualKeyboard.js`
-- `src/components/VirtualKeyboard/VirtualKeyboard.module.less`
-- `src/components/VirtualKeyboard/index.js`
-- `src/__tests__/components/VirtualKeyboard.test.js`
+#### Task 2.2: VirtualKeyboard 클래스 구현
+- [ ] src/ui/VirtualKeyboard.cpp 생성
+  - `setupUI()`: QWERTY 레이아웃 그리드 생성
+    - 행 0: 숫자 1-0 + `-`
+    - 행 1: qwertyuiop + `/`
+    - 행 2: asdfghjkl + `:` + `.`
+    - 행 3: zxcvbnm + `?` + `&` + `=` + `_`
+    - 제어 키 (행 4): Space (4칸), Backspace (2칸), Enter (3칸), Cancel (2칸)
+  - `createKeyButton()`: QPushButton 생성 및 스타일 설정
+    - 최소 크기: 60x60px
+    - 폰트 크기: 20px
+  - `keyPressEvent()`: 리모컨 방향키 처리
+    - Qt::Key_Up/Down/Left/Right → moveFocusInGrid 호출
+    - Qt::Key_Select/Enter → 현재 포커스된 버튼 클릭 시뮬레이션
+    - Qt::Key_Escape/Back → emit closeRequested(), hide()
+  - `moveFocusInGrid()`: 그리드 내 포커스 이동 로직
+    - 2D 배열 좌표 계산, 순환 이동 (모듈러 연산)
+  - `getCurrentFocusPosition()`: focusWidget()을 QPoint로 변환
+  - `onKeyButtonClicked()`: 버튼 클릭 시 해당 문자 emit characterEntered
+  - `applyStyles()`: QSS 스타일 적용
+    - 포커스 시 3px 파란 테두리 (border: 3px solid #00aaff)
+    - 배경색: #3a3a3a, 폰트색: #ffffff
 
-#### 완료 기준
-- 키보드가 화면 하단에 정상 렌더링
-- 모든 키(영문, 숫자, 특수문자, 제어 키)가 클릭 가능
-- 포커스 스타일이 명확하게 표시
-- 단위 테스트 통과
-- requirements.md의 FR-2 (가상 키보드) 요구사항 충족
+#### Task 2.3: CMakeLists.txt 수정
+- [ ] SOURCES에 `src/ui/VirtualKeyboard.cpp` 추가
+- [ ] HEADERS에 `src/ui/VirtualKeyboard.h` 추가
+
+**산출물**:
+- src/ui/VirtualKeyboard.h
+- src/ui/VirtualKeyboard.cpp
+- 수정된 CMakeLists.txt
+
+**완료 기준**:
+- VirtualKeyboard 위젯이 화면에 표시됨 (QDialog 또는 QWidget)
+- 리모컨 방향키로 모든 키에 포커스 이동 가능
+- Select 키로 문자 입력 시 characterEntered 시그널 발생
+- ESC/Back 키로 키보드 닫기 가능
+- 포커스된 키가 3px 파란 테두리로 명확히 표시됨
 
 ---
 
-### Phase 3: URLBar 컴포넌트 구현 (기본 버전)
-**담당**: frontend-dev
-**예상 시간**: 1.5시간
-**의존성**: Phase 1, Phase 2 완료
+### Phase 3: URLBar 컴포넌트 구현
+**담당자**: cpp-dev
+**예상 소요 시간**: 4시간
+**의존성**: Phase 1, Phase 2 완료 필요
 
-#### 작업 내용
-- [ ] Task 3-1: URLBar 컴포넌트 구현
-  - `src/components/URLBar/` 디렉토리 생성
-  - `URLBar.js` 생성
-  - Props 인터페이스 정의
-    - `value`: 현재 URL 값
-    - `onChange`: URL 변경 콜백
-    - `onSubmit`: 확인 버튼 클릭 콜백
-    - `suggestions`: 자동완성 제안 목록 (선택적, 기본값 [])
-    - `onSuggestionSelect`: 자동완성 항목 선택 콜백 (선택적)
-    - `onFocus`, `onBlur`: 포커스 이벤트 콜백
-    - `className`: 스타일 커스터마이징
-  - PropTypes 선언 및 defaultProps 설정
-  - 상태 관리
-    - `inputValue`: 내부 입력 값 (Props와 동기화)
-    - `isFocused`: 포커스 상태
-    - `showKeyboard`: 가상 키보드 표시 여부
-    - `showSuggestions`: 자동완성 표시 여부 (기본: false, F-07/F-08 연동 시 활성화)
-    - `selectedIndex`: 자동완성 선택 인덱스 (기본: -1)
-    - `inputRef`: Input DOM 참조 (useRef)
-  - Enact Input 컴포넌트 사용
-    - Moonstone Input import
-    - Spotlightable 적용 (기본 제공)
-    - placeholder: "URL을 입력하세요"
-  - VirtualKeyboard 통합
-    - 조건부 렌더링 (showKeyboard=true일 때만 표시)
-    - 키보드 이벤트 핸들러
-      - `handleKeyboardInput(char)`: inputValue에 문자 추가, onChange 콜백 호출
-      - `handleKeyboardBackspace()`: inputValue 마지막 문자 제거
-      - `handleKeyboardSpace()`: inputValue에 스페이스 추가
-      - `handleKeyboardEnter()`: handleSubmit 호출
-      - `handleKeyboardCancel()`: showKeyboard=false, inputValue 이전 값 복원
-  - URL 검증 및 제출
-    - `handleSubmit()` 함수
-      - `validateAndFormatUrl(inputValue)` 호출 (Phase 1 유틸리티)
-      - 유효한 URL: onSubmit 콜백 호출, 키보드 닫기
-      - 유효하지 않은 URL: logger.warn 로그, 에러 메시지 표시 (F-10 연동 시 확장)
-  - 포커스 핸들러
-    - `handleFocus()`: isFocused=true, showKeyboard=true, onFocus 콜백 호출
-    - `handleBlur()`: isFocused=false, onBlur 콜백 호출 (키보드는 백 버튼으로만 닫기)
-  - 리모컨 방향키 하 감지
-    - `handleKeyDown(event)`: 방향키 아래 (keyCode 40) 감지 시 Spotlight.focus('virtual-keyboard')
-- [ ] Task 3-2: URLBar 스타일 구현
-  - `URLBar.module.less` 생성
-  - 레이아웃 스타일
-    - `.urlBar`: flexbox column, width 100%, padding 16px
-    - `.input`: width 100%, height 60px, 폰트 18px, border-radius 8px
-  - 포커스 스타일
-    - Spotlight 포커스 시: 테두리 2px #00aaff, box-shadow
-  - 색상 테마: 다크 모드 (배경 #2a2a2a, 입력 필드 #3a3a3a)
-- [ ] Task 3-3: index.js 생성 및 export
-  - `src/components/URLBar/index.js` 생성
-  - URLBar 컴포넌트 export
-- [ ] Task 3-4: 단위 테스트 작성
-  - `src/__tests__/components/URLBar.test.js` 생성
-  - 테스트 케이스:
-    - URLBar 렌더링 (Input 필드 존재)
-    - 포커스 시 VirtualKeyboard 표시
-    - 키보드 문자 입력 시 inputValue 업데이트
-    - 확인 버튼 클릭 시 onSubmit 콜백 호출 (유효한 URL)
-    - 유효하지 않은 URL 입력 시 onSubmit 호출 안 됨
-    - 취소 버튼 클릭 시 키보드 닫기 및 값 복원
-  - Enact Testing Library 사용
+#### Task 3.1: URLBar 클래스 구현 (UI 부분)
+- [ ] src/ui/URLBar.cpp 기본 구조 작성
+  - 생성자: UI 초기화, 시그널/슬롯 연결, 스타일 적용
+  - `setupUI()`: QVBoxLayout 기반 레이아웃 구성
+    - inputLayout_ (QHBoxLayout): inputField_ 배치
+    - errorLabel_ (QLabel): 에러 메시지 표시, 초기에는 숨김
+    - autocompleteFrame_ (QFrame): autocompleteList_ 포함, 초기에는 숨김
+  - `applyStyles()`: QSS 스타일 적용
+    - inputField_: 폰트 18px, 포커스 시 3px 파란 테두리
+    - errorLabel_: 빨간색 폰트 (#ff4444), 14px
+    - autocompleteList_: 배경 #2a2a2a, 폰트 16px
 
-#### 예상 산출물
-- `src/components/URLBar/URLBar.js`
-- `src/components/URLBar/URLBar.module.less`
-- `src/components/URLBar/index.js`
-- `src/__tests__/components/URLBar.test.js`
+#### Task 3.2: URLBar 입력 및 검증 로직
+- [ ] `keyPressEvent()` 오버라이드
+  - Qt::Key_Enter/Return → validateAndCompleteUrl() 호출 → emit urlSubmitted
+  - Qt::Key_Escape/Back → 이전 URL 복원 (previousUrl_), emit editingCancelled
+  - Qt::Key_Down → 자동완성 리스트로 포커스 이동
+  - Qt::Key_Select → showVirtualKeyboard() 호출
+- [ ] `validateAndCompleteUrl()` 구현
+  - URLValidator::isValid() 체크
+  - false → showError("유효한 URL을 입력하세요"), return QUrl()
+  - true → URLValidator::autoComplete() 호출, return QUrl
+- [ ] `showError()`, `hideError()` 구현
+  - errorLabel_->setText(message), errorLabel_->show()
+  - inputField_->setStyleSheet("border: 2px solid red;")
+  - 3초 후 자동으로 hideError() (QTimer::singleShot)
+- [ ] focusInEvent, focusOutEvent 오버라이드
+  - 포커스 인: 테두리 하이라이트 (QSS 자동 적용)
+  - 포커스 아웃: 가상 키보드 숨김 (선택사항)
 
-#### 완료 기준
-- URLBar 컴포넌트가 정상 렌더링
-- 포커스 시 VirtualKeyboard 자동 표시
-- 키보드로 문자 입력 가능
-- 확인 버튼으로 URL 제출 가능 (검증 통과 시)
-- 단위 테스트 통과
-- requirements.md의 FR-1, FR-4, FR-5 요구사항 충족
+#### Task 3.3: URLBar + VirtualKeyboard 통합
+- [ ] VirtualKeyboard 인스턴스 생성 및 멤버 변수 초기화
+  - virtualKeyboard_ = std::make_unique<VirtualKeyboard>(this)
+  - virtualKeyboard_->hide() (초기에는 숨김)
+- [ ] `showVirtualKeyboard()` 구현
+  - previousUrl_ = inputField_->text() (취소 시 복원용)
+  - virtualKeyboard_->show()
+  - virtualKeyboard_->setFocus()
+- [ ] 시그널/슬롯 연결 (setupConnections)
+  - VirtualKeyboard::characterEntered → URLBar::onKeyboardCharacterEntered
+  - VirtualKeyboard::backspacePressed → inputField_->backspace()
+  - VirtualKeyboard::spacePressed → inputField_->insert(" ")
+  - VirtualKeyboard::enterPressed → validateAndCompleteUrl() 호출
+  - VirtualKeyboard::closeRequested → URLBar::onKeyboardClosed
+- [ ] `onKeyboardCharacterEntered()` 구현
+  - inputField_->insert(character)
+- [ ] `onKeyboardClosed()` 구현
+  - virtualKeyboard_->hide()
+  - inputField_->setFocus()
+
+**산출물**:
+- src/ui/URLBar.cpp (확장 구현)
+
+**완료 기준**:
+- URLBar 위젯이 BrowserWindow 상단에 표시됨
+- 리모컨 포커스 시 테두리 하이라이트 표시
+- Select 키로 가상 키보드 표시
+- 가상 키보드로 문자 입력 시 inputField_에 반영
+- Enter 키로 URL 제출 시 urlSubmitted 시그널 발생
+- ESC 키로 입력 취소 시 이전 URL 복원
+- 유효하지 않은 URL 입력 시 에러 메시지 표시
 
 ---
 
-### Phase 4: BrowserView 통합
-**담당**: frontend-dev
-**예상 시간**: 45분
-**의존성**: Phase 3 완료
+### Phase 4: 자동완성 기능 구현 (선택적)
+**담당자**: cpp-dev
+**예상 소요 시간**: 3시간
+**의존성**: Phase 3 완료, F-07 (북마크), F-08 (히스토리) 완료 시 활성화
 
-#### 작업 내용
-- [ ] Task 4-1: BrowserView에 URLBar 통합
-  - `src/views/BrowserView.js` 수정
-  - URLBar 컴포넌트 import
-  - URL 상태 관리 추가
-    - `const [currentUrl, setCurrentUrl] = useState('https://www.google.com')`
-    - `const [inputValue, setInputValue] = useState(currentUrl)`
-  - URLBar 이벤트 핸들러 구현
-    - `handleUrlChange(newUrl)`: setInputValue(newUrl)
-    - `handleUrlSubmit(validatedUrl)`: setCurrentUrl(validatedUrl), setInputValue(validatedUrl), logger.info
-    - `handleSuggestionSelect(suggestion)`: (준비만, F-07/F-08 연동 시 활성화)
-  - 자동완성 Hook 준비 (비활성화)
-    - `const suggestions = []` (F-07, F-08 완료 후 useAutocompleteSuggestions로 교체)
-  - URLBar 렌더링
-    - Header 아래에 URLBar 컴포넌트 추가
-    - Props 전달: value, onChange, onSubmit, suggestions, onSuggestionSelect
-  - WebView에 currentUrl Props 전달
-    - `<WebView url={currentUrl} />`
-- [ ] Task 4-2: BrowserView 스타일 조정
-  - `src/views/BrowserView.module.less` 수정
-  - `.urlBarPlaceholder` 제거
-  - URLBar 영역 스타일 조정 (필요 시)
-- [ ] Task 4-3: 백 버튼 이벤트 캡처
-  - BrowserView에 `handleKeyDown` 함수 추가
-  - 백 버튼 (keyCode 8 또는 461) 감지
-  - showKeyboard=true일 때만 event.preventDefault(), setShowKeyboard(false)
-  - Panel 컴포넌트에 `onKeyDown={handleKeyDown}` 추가
+#### Task 4.1: 자동완성 UI 구현
+- [ ] `showAutocompletePopup()` 구현
+  - autocompleteList_->clear()
+  - QStringList를 QListWidgetItem으로 추가
+  - 각 항목: 타이틀 + URL (두 줄 표시)
+  - autocompleteFrame_->show()
+  - isAutocompleteVisible_ = true
+- [ ] `hideAutocompletePopup()` 구현
+  - autocompleteFrame_->hide()
+  - isAutocompleteVisible_ = false
+- [ ] autocompleteList_ 키 이벤트 처리
+  - Qt::Key_Up/Down → 항목 간 이동
+  - Qt::Key_Select/Enter → 선택된 항목의 URL을 inputField_에 채움
+  - Qt::Key_Escape → hideAutocompletePopup()
 
-#### 예상 산출물
-- `src/views/BrowserView.js` (수정)
-- `src/views/BrowserView.module.less` (수정)
+#### Task 4.2: 자동완성 검색 로직
+- [ ] `onTextChanged()` 슬롯 구현
+  - hideError() 호출
+  - debounceTimer_->stop()
+  - debounceTimer_->start(500) (500ms 디바운싱)
+- [ ] `onDebounceTimeout()` 슬롯 구현
+  - QString query = inputField_->text()
+  - searchAutocomplete(query) 호출
+- [ ] `searchAutocomplete()` 구현
+  - query.length() < 2 → hideAutocompletePopup(), return
+  - HistoryService::search(query) 호출 (F-08 완료 후)
+  - BookmarkService::search(query) 호출 (F-07 완료 후)
+  - 결과 병합, 중복 제거, 정렬
+  - 최대 5개로 제한
+  - showAutocompletePopup(suggestions) 호출
+- [ ] 시그널/슬롯 연결
+  - inputField_->textChanged → URLBar::onTextChanged
+  - debounceTimer_->timeout → URLBar::onDebounceTimeout
+  - autocompleteList_->itemClicked → URLBar::onAutocompleteItemSelected
 
-#### 완료 기준
-- BrowserView에서 URLBar 정상 렌더링
-- URL 입력 후 WebView에 URL 전달 확인 (로그)
-- 백 버튼으로 키보드 닫기 동작 확인
-- requirements.md의 FR-5 (페이지 로드) 요구사항 충족
+#### Task 4.3: 의존성 주입 메서드 구현
+- [ ] `setHistoryService()` 구현
+  - historyService_ = service
+- [ ] `setBookmarkService()` 구현
+  - bookmarkService_ = service
 
----
+**산출물**:
+- src/ui/URLBar.cpp (자동완성 기능 추가)
 
-### Phase 5: Spotlight 통합 및 테스트
-**담당**: frontend-dev
-**예상 시간**: 1시간
-**의존성**: Phase 4 완료
+**완료 기준**:
+- 문자 입력 시 500ms 후 자동완성 팝업 표시
+- 히스토리/북마크에서 일치하는 항목 검색 (최대 5개)
+- 방향키 하(Key_Down)로 자동완성 리스트 포커스 이동
+- Select 키로 항목 선택 시 URL 필드에 채워짐
+- 제안 없을 시 팝업 숨김
 
-#### 작업 내용
-- [ ] Task 5-1: URLBar ↔ VirtualKeyboard 포커스 전환 구현
-  - URLBar에서 방향키 아래 감지 시 Spotlight.focus('virtual-keyboard') 호출
-  - VirtualKeyboard의 SpotlightContainer 설정 확인
-    - enterTo: 'default-element'
-    - defaultElement: '[data-key="q"]'
-    - restrict: 'self-only'
-  - 키보드에서 백 버튼 동작 확인
-- [ ] Task 5-2: 로컬 브라우저 테스트
-  - `npm run serve` 실행
-  - 테스트 시나리오:
-    - 탭 키로 URL 입력 필드에 포커스 이동
-    - 포커스 시 가상 키보드 자동 표시 확인
-    - 탭 키로 키보드 내 키 간 포커스 이동 확인
-    - 엔터 키로 문자 입력 확인 (탭 키는 포커스 이동, 엔터는 선택)
-    - URL 입력 후 확인 버튼 클릭 → WebView URL 변경 확인 (개발자 도구 로그)
-    - 백스페이스 키로 문자 삭제 확인
-    - ESC 키로 키보드 닫기 확인
-  - 브라우저 콘솔에서 에러 없음 확인
-- [ ] Task 5-3: URL 검증 테스트
-  - 다양한 URL 입력 테스트:
-    - `google.com` → `http://google.com` 자동 보완 확인
-    - `https://www.youtube.com` → 프로토콜 유지 확인
-    - `localhost:8080` → `http://localhost:8080` 변환 확인
-    - `invalid` → 에러 로그 확인 (제출 안 됨)
-  - 로그에서 검증 결과 확인 (logger.info, logger.warn)
-
-#### 예상 산출물
-- 없음 (테스트 단계)
-
-#### 완료 기준
-- 로컬 브라우저에서 모든 테스트 시나리오 통과
-- Spotlight 포커스 이동이 직관적이고 예측 가능
-- URL 검증 및 자동 보완 정상 동작
-- requirements.md의 FR-6 (리모컨 키 매핑) 요구사항 충족 (로컬에서 확인)
+**주의**: F-07, F-08 미완료 시 자동완성 검색 로직은 스켈레톤으로 남겨두고, 나중에 통합
 
 ---
 
-### Phase 6: 실제 디바이스 테스트
-**담당**: frontend-dev
-**예상 시간**: 1시간
-**의존성**: Phase 5 완료
+### Phase 5: BrowserWindow 통합
+**담당자**: cpp-dev
+**예상 소요 시간**: 1시간
+**의존성**: Phase 3 완료 필요
 
-#### 작업 내용
-- [ ] Task 6-1: 프로젝터 빌드 및 배포
-  - `npm run pack-p` 실행
-  - `ares-package dist/` 실행
-  - `ares-install --device projector {ipk파일}` 실행
-  - `ares-launch --device projector com.jsong.webosbrowser` 실행
-- [ ] Task 6-2: 리모컨 조작 테스트
-  - 리모컨 방향키로 URL 필드 포커스 이동
-  - URL 필드 선택 시 가상 키보드 표시 확인
-  - 리모컨 방향키로 키보드 내 키 간 포커스 이동 확인 (상하좌우)
-  - 선택 버튼으로 문자 입력 확인
-  - 백스페이스 키로 문자 삭제 확인
-  - 스페이스 키로 공백 입력 확인
-  - 확인 버튼으로 URL 제출 확인
-  - 취소 버튼으로 키보드 닫기 및 값 복원 확인
-  - 백 버튼으로 키보드 닫기 확인
-- [ ] Task 6-3: 주요 사이트 URL 입력 테스트
-  - `google.com` 입력 → `http://google.com` 자동 보완 → 페이지 로드 확인
-  - `https://www.youtube.com` 입력 → 페이지 로드 확인
-  - `naver.com` 입력 → 페이지 로드 확인
-  - 잘못된 URL 입력 → 에러 로그 확인 (ares-log로 확인)
-- [ ] Task 6-4: 성능 테스트
-  - 리모컨 버튼 입력 후 UI 반응 속도 측정 (요구사항: 0.3초 이내)
-  - 가상 키보드 렌더링 시간 측정 (요구사항: 1초 이내)
-  - 메모리 사용량 확인 (요구사항: 키보드 포함 50MB 이하)
-- [ ] Task 6-5: 가독성 테스트
-  - 3m 거리에서 폰트 크기 가독성 확인 (URL 필드 18px, 키보드 키 20px)
-  - 포커스된 요소가 명확하게 구분되는지 확인 (테두리 3px)
-  - 대비 비율 확인 (배경과 전경 색상)
-- [ ] Task 6-6: 로그 확인 및 디버깅
-  - `ares-log --device projector -f com.jsong.webosbrowser` 실행
-  - 에러 로그 없음 확인
-  - URL 제출 로그 확인 ("[BrowserView] URL 제출: ...")
-  - 키보드 입력 로그 확인 ("[VirtualKeyboard] 문자 입력: ...")
+#### Task 5.1: BrowserWindow에 URLBar 추가
+- [ ] src/browser/BrowserWindow.h 수정
+  - `URLBar *urlBar_` 멤버 변수 선언
+  - 헤더 인클루드: `#include "ui/URLBar.h"`
+- [ ] src/browser/BrowserWindow.cpp 수정
+  - `setupUI()` 메서드:
+    - urlBar_ = new URLBar(this)
+    - mainLayout_->addWidget(urlBar_) (WebView 위에 배치)
+  - `setupConnections()` 메서드:
+    - URLBar::urlSubmitted → WebView::load 시그널/슬롯 연결
+    - WebView::urlChanged → URLBar::setText 연결 (현재 URL 표시)
+    - WebView::loadError → URLBar::showError 연결 (에러 메시지 표시)
 
-#### 예상 산출물
-- 없음 (테스트 단계)
+**산출물**:
+- 수정된 src/browser/BrowserWindow.h
+- 수정된 src/browser/BrowserWindow.cpp
 
-#### 완료 기준
-- 리모컨으로 모든 기능 정상 동작
-- 주요 웹사이트 URL 입력 및 로드 성공
-- 성능 요구사항 충족 (입력 반응 0.3초, 키보드 렌더링 1초)
-- 가독성 요구사항 충족 (3m 거리에서 명확)
-- requirements.md의 모든 AC (AC-1~AC-7) 통과
+**완료 기준**:
+- BrowserWindow 실행 시 URLBar가 상단에 표시됨
+- URLBar에서 URL 입력 후 Enter 시 WebView에서 페이지 로드
+- 페이지 로드 성공 시 URLBar에 최종 URL 표시 (리다이렉트 반영)
+- 페이지 로드 실패 시 URLBar에 에러 메시지 표시
 
 ---
 
-### Phase 7: AutocompleteDropdown 컴포넌트 (선택적, F-07/F-08 완료 후)
-**담당**: frontend-dev
-**예상 시간**: 1시간
-**의존성**: F-07 (북마크 관리), F-08 (히스토리 관리) 완료
+### Phase 6: 스타일링 및 리소스 추가
+**담당자**: cpp-dev
+**예상 소요 시간**: 1시간
+**의존성**: Phase 5 완료 후
 
-#### 작업 내용
-- [ ] Task 7-1: AutocompleteDropdown 컴포넌트 구현
-  - `src/components/URLBar/AutocompleteDropdown.js` 생성
-  - Props 인터페이스 정의
-    - `suggestions`: 제안 목록 (url, title, favicon)
-    - `selectedIndex`: 현재 선택된 인덱스
-    - `onSelect`: 항목 선택 콜백
-    - `visible`: 표시 여부
-    - `className`: 스타일 커스터마이징
-  - PropTypes 선언 및 defaultProps 설정
-  - Enact VirtualList 사용
-    - `dataSize={suggestions.length}`
-    - `itemRenderer`: 제안 항목 렌더링 함수
-    - `itemSize={60}`: 각 항목 높이 60px
-  - 제안 항목 렌더링 구조
-    - favicon (있을 경우), title, url 표시
-    - 선택된 항목은 배경색 강조 (isSelected)
-  - 조건부 렌더링
-    - visible=false 또는 suggestions.length=0이면 null 반환
-- [ ] Task 7-2: AutocompleteDropdown 스타일 구현
-  - `AutocompleteDropdown.module.less` 생성 (또는 URLBar.module.less에 추가)
-  - 드롭다운 스타일
-    - 최대 높이 300px (5개 항목)
-    - 배경색 #3a3a3a, border-radius 8px
-  - 제안 항목 스타일
-    - 높이 60px, flexbox 정렬
-    - 선택 시 배경색 #4a4a4a
-    - favicon 24x24px, 마진 8px
-    - title 폰트 16px, url 폰트 14px (회색)
-    - 말줄임(...) 처리
-- [ ] Task 7-3: URLBar에 AutocompleteDropdown 통합
-  - URLBar.js 수정
-  - AutocompleteDropdown import
-  - URLBar 렌더링 구조에 AutocompleteDropdown 추가
-  - Props 전달: suggestions, selectedIndex, onSelect, visible=showSuggestions
-  - `handleSuggestionSelect(suggestion)` 함수 구현
-    - inputValue 업데이트
-    - onSuggestionSelect 콜백 호출
-    - showSuggestions=false
-  - 방향키 아래로 제안 리스트 포커스 이동 구현
-    - selectedIndex 증가/감소
-  - 방향키 위로 URL 입력 필드 복귀 구현
+#### Task 6.1: QSS 스타일 파일 작성 (선택적)
+- [ ] resources/styles/urlbar.qss 생성
+  - URLBar QLineEdit 스타일 (포커스, 일반)
+  - 에러 라벨 스타일 (빨간색)
+  - VirtualKeyboard QPushButton 스타일 (포커스, 일반)
+  - 자동완성 QListWidget 스타일 (선택, 일반)
+- [ ] URLBar::applyStyles() 수정
+  - QFile::open(":/styles/urlbar.qss")
+  - setStyleSheet(qssContent)
+- [ ] resources.qrc 파일 수정
+  - urlbar.qss를 리소스에 추가
 
-#### 예상 산출물
-- `src/components/URLBar/AutocompleteDropdown.js`
-- `src/components/URLBar/URLBar.js` (수정)
-- `src/components/URLBar/URLBar.module.less` (수정)
+**산출물**:
+- resources/styles/urlbar.qss
+- 수정된 resources.qrc (또는 CMakeLists.txt)
 
-#### 완료 기준
-- 자동완성 드롭다운 정상 렌더링
-- 제안 목록이 올바르게 표시 (title, url, favicon)
-- 방향키로 제안 리스트 탐색 가능
-- 선택 버튼으로 제안 항목 선택 시 URL 필드에 채워짐
-- requirements.md의 FR-3 (URL 자동완성) 요구사항 충족
+**완료 기준**:
+- QSS 파일이 런타임에 로드되어 스타일 적용됨
+- 포커스된 요소가 3px 파란 테두리로 명확히 표시됨
+- 폰트 크기가 요구사항 충족 (18px 입력 필드, 20px 키보드)
 
 ---
 
-### Phase 8: 자동완성 데이터 통합 (F-07/F-08 완료 후)
-**담당**: frontend-dev
-**예상 시간**: 45분
-**의존성**: F-07 (북마크 관리), F-08 (히스토리 관리), Phase 7 완료
+### Phase 7: 단위 테스트 작성
+**담당자**: test-runner
+**예상 소요 시간**: 3시간
+**의존성**: Phase 1, Phase 2, Phase 3 완료 필요
 
-#### 작업 내용
-- [ ] Task 8-1: useAutocompleteSuggestions Hook 구현
-  - `src/hooks/useAutocompleteSuggestions.js` 생성
-  - Hook 인터페이스 정의
-    - `query`: 검색 쿼리 (string)
-    - `maxResults`: 최대 결과 수 (기본값: 5)
-    - 반환값: `suggestions` 배열
-  - useEffect로 query 변경 감지
-    - query 길이 2자 미만이면 빈 배열 반환
-    - historyService.searchHistory(query, maxResults) 호출 (F-08)
-    - bookmarkService.searchBookmarks(query, maxResults) 호출 (F-07)
-    - 히스토리 + 북마크 통합 및 중복 제거
-    - 상위 N개만 반환
-  - JSDoc 주석 작성
-- [ ] Task 8-2: BrowserView에 Hook 통합
-  - BrowserView.js 수정
-  - useAutocompleteSuggestions Hook import
-  - `const suggestions = useAutocompleteSuggestions(inputValue, 5)` 호출
-  - URLBar에 suggestions Props 전달
-  - `handleSuggestionSelect` 함수 구현
-    - setCurrentUrl(suggestion.url)
-    - setInputValue(suggestion.url)
-    - logger.info
-- [ ] Task 8-3: 자동완성 성능 테스트
-  - 히스토리 + 북마크 100개 데이터로 테스트
-  - 문자 입력 후 0.5초 이내 제안 표시 확인
-  - 메모리 사용량 확인
+#### Task 7.1: URLValidator 단위 테스트
+- [ ] tests/unit/URLValidatorTest.cpp 생성
+  - TEST: ValidURL (유효한 URL 검증)
+  - TEST: InvalidURL (잘못된 URL 검증)
+  - TEST: AutoComplete (프로토콜 자동 추가)
+  - TEST: SearchQuery (검색어 판단)
+  - TEST: DomainFormat (도메인 형식 검증)
+- [ ] CMakeLists.txt (tests 디렉토리) 수정
+  - URLValidatorTest.cpp 추가
 
-#### 예상 산출물
-- `src/hooks/useAutocompleteSuggestions.js`
-- `src/views/BrowserView.js` (수정)
+#### Task 7.2: VirtualKeyboard 단위 테스트
+- [ ] tests/unit/VirtualKeyboardTest.cpp 생성
+  - TEST: CharacterEntered (문자 입력 시그널)
+  - TEST: FocusNavigation (그리드 포커스 이동)
+  - TEST: BackspacePressed (백스페이스 시그널)
+  - TEST: CloseRequested (키보드 닫기 시그널)
+- [ ] CMakeLists.txt 수정
+  - VirtualKeyboardTest.cpp 추가
 
-#### 완료 기준
-- 문자 입력 시 히스토리 + 북마크 제안 정상 표시
-- 자동완성 성능 요구사항 충족 (0.5초 이내)
-- requirements.md의 AC-5 (자동완성) 통과
+#### Task 7.3: URLBar 통합 테스트
+- [ ] tests/integration/URLBarIntegrationTest.cpp 생성
+  - TEST: SubmitURL (URL 제출 후 WebView 로드)
+  - TEST: CancelEditing (ESC 키로 입력 취소)
+  - TEST: InvalidURLError (유효하지 않은 URL 에러 표시)
+  - TEST: RemoteControlNavigation (리모컨 키 네비게이션)
 
----
+**산출물**:
+- tests/unit/URLValidatorTest.cpp
+- tests/unit/VirtualKeyboardTest.cpp
+- tests/integration/URLBarIntegrationTest.cpp
+- 수정된 tests/CMakeLists.txt
 
-### Phase 9: 검색 엔진 통합 (F-09 완료 후)
-**담당**: frontend-dev
-**예상 시간**: 30분
-**의존성**: F-09 (검색 엔진 통합) 완료
-
-#### 작업 내용
-- [ ] Task 9-1: searchService.js 생성 (또는 F-09에서 생성된 파일 사용)
-  - `src/services/searchService.js` 생성 (F-09에서 생성되었으면 스킵)
-  - `buildSearchUrl(query, engine)` 함수 구현
-    - 검색 엔진별 URL 생성 (google, naver, bing, duckduckgo)
-    - encodeURIComponent로 쿼리 인코딩
-  - JSDoc 주석 작성
-- [ ] Task 9-2: urlValidator.js에 검색 엔진 통합
-  - urlValidator.js 수정
-  - `validateAndFormatUrl` 함수에서 검색어 감지 로직 추가
-    - 도메인 형식이 아니고, 프로토콜도 없으면 검색어로 판단
-    - `buildSearchUrl(input, 'google')` 호출하여 검색 URL 생성
-    - 생성된 URL 반환
-  - 단위 테스트 업데이트
-    - 검색어 입력 시 검색 URL 생성 확인
-- [ ] Task 9-3: BrowserView에 검색 엔진 설정 연동
-  - 설정에서 기본 검색 엔진 선택 기능 연동 (F-11 설정 화면과 연계)
-  - 현재는 하드코딩 ('google') 사용
-
-#### 예상 산출물
-- `src/services/searchService.js` (또는 수정)
-- `src/utils/urlValidator.js` (수정)
-- `src/__tests__/utils/urlValidator.test.js` (수정)
-
-#### 완료 기준
-- 검색어 입력 시 검색 엔진 URL로 자동 변환
-- 예: "webos browser" → "https://www.google.com/search?q=webos%20browser"
-- requirements.md의 FR-4 (URL 검증 및 자동 보완) 완전 충족
+**완료 기준**:
+- 모든 단위 테스트 통과 (Google Test)
+- 통합 테스트 통과 (Qt Test)
+- 테스트 커버리지 80% 이상 (핵심 로직)
 
 ---
 
-### Phase 10: 최종 테스트 및 문서화
-**담당**: frontend-dev (구현), doc-writer (문서)
-**예상 시간**: 1.5시간
-**의존성**: Phase 9 완료 (또는 Phase 6 이후 진행 가능)
+### Phase 8: 코드 리뷰 및 문서화
+**담당자**: code-reviewer
+**예상 소요 시간**: 2시간
+**의존성**: Phase 1~7 완료 필요
 
-#### 작업 내용
-- [ ] Task 10-1: 회귀 테스트 (frontend-dev)
-  - requirements.md의 AC-1~AC-8 모두 검증
-  - AC-1: URL 입력 필드 렌더링
-  - AC-2: 가상 키보드 동작
-  - AC-3: URL 유효성 검증 및 자동 보완
-  - AC-4: 페이지 로드
-  - AC-5: 자동완성 (F-07, F-08 연동 후)
-  - AC-6: 리모컨 키 매핑
-  - AC-7: 성능 및 가독성
-  - AC-8: 회귀 테스트 (긴 URL, 특수문자)
-  - 테스트 결과 문서화 (체크리스트)
-- [ ] Task 10-2: 성능 테스트 (frontend-dev)
-  - 입력 반응 속도: 리모컨 버튼 입력 후 0.3초 이내 확인
-  - 키보드 렌더링 시간: 1초 이내 확인
-  - 자동완성 검색 속도: 0.5초 이내 확인
-  - 메모리 사용량: 50MB 이하 확인
-  - 성능 측정 결과 로그에 기록
-- [ ] Task 10-3: 컴포넌트 문서 작성 (doc-writer)
-  - `docs/components/URLBar.md` 생성
-    - Props 인터페이스
-    - 사용 예시 코드
-    - 리모컨 키 매핑
-    - 상태 관리 방법
-    - 주의사항 (포커스 전환, URL 검증 등)
-  - `docs/components/VirtualKeyboard.md` 생성
-    - Props 인터페이스
-    - 키보드 레이아웃 설명
-    - 사용 예시 코드
-    - 리모컨 키 매핑
-    - Spotlight 통합 방법
-    - 주의사항 (포커스 경로, 키보드 경계 등)
-- [ ] Task 10-4: CHANGELOG 업데이트 (doc-writer)
-  - CHANGELOG.md에 F-03 URL 입력 UI 항목 추가
-  - 주요 변경 사항:
-    - URLBar 컴포넌트 추가
-    - VirtualKeyboard 컴포넌트 추가
-    - URL 검증 및 자동 보완 기능
-    - 리모컨 최적화 가상 키보드
-    - (F-07, F-08 연동 시) URL 자동완성 기능
+#### Task 8.1: 코드 리뷰
+- [ ] URLValidator 코드 리뷰
+  - 정규표현식 검증 로직 확인
+  - QUrl::fromUserInput 사용 적절성 검증
+- [ ] VirtualKeyboard 코드 리뷰
+  - 그리드 포커스 이동 로직 검증
+  - 메모리 누수 확인 (QPushButton 배열)
+- [ ] URLBar 코드 리뷰
+  - 시그널/슬롯 연결 정합성 확인
+  - keyPressEvent 로직 검증
+- [ ] BrowserWindow 통합 검증
+  - 레이아웃 구조 확인
+  - 포커스 경로 검증
 
-#### 예상 산출물
-- 회귀 테스트 체크리스트 (문서)
-- 성능 테스트 결과 (로그 또는 문서)
-- `docs/components/URLBar.md`
-- `docs/components/VirtualKeyboard.md`
-- `CHANGELOG.md` (수정)
+#### Task 8.2: 문서 검증
+- [ ] requirements.md 충족 여부 확인
+  - FR-1~FR-6 완료 기준 검증
+  - 비기능 요구사항 (성능, 가독성, UX) 검증
+- [ ] design.md 설계 준수 확인
+  - 아키텍처 결정 준수 여부
+  - API 명세 일치 여부
+- [ ] plan.md 태스크 완료 확인
+  - 모든 Phase 완료 여부 체크리스트
 
-#### 완료 기준
-- requirements.md의 모든 AC 통과
-- 성능 및 비기능 요구사항 충족
-- 컴포넌트 문서 작성 완료
-- CHANGELOG 업데이트 완료
+**산출물**:
+- 코드 리뷰 결과 (CHANGELOG.md 또는 dev-log.md에 기록)
+- 개선 제안 목록 (필요 시)
+
+**완료 기준**:
+- 모든 코드가 CLAUDE.md 코딩 컨벤션 준수
+- 주요 기능 요구사항 (FR-1~FR-6) 모두 충족
+- 비기능 요구사항 (성능, 가독성, UX) 검증 완료
+- 테스트 통과 및 문서 업데이트 완료
 
 ---
 
 ## 3. 태스크 의존성 다이어그램
 
 ```
-Phase 1: urlValidator.js
+Phase 1 (URLValidator)
     │
-    │ (병렬)
-    ▼
-Phase 2: VirtualKeyboard
-    │
-    ├───────────────┐
-    │               │
-    ▼               ▼
-Phase 3: URLBar ──▶ Phase 4: BrowserView 통합
-                        │
-                        ▼
-                    Phase 5: Spotlight 통합 및 테스트
-                        │
-                        ▼
-                    Phase 6: 실제 디바이스 테스트
-                        │
-                        │ (선택적, F-07/F-08 완료 후)
-                        ▼
-                    Phase 7: AutocompleteDropdown
-                        │
-                        ▼
-                    Phase 8: 자동완성 데이터 통합
-                        │
-                        │ (선택적, F-09 완료 후)
-                        ▼
-                    Phase 9: 검색 엔진 통합
-                        │
-                        ▼
-                    Phase 10: 최종 테스트 및 문서화
+    ├──────────────┐
+    │              │
+    ▼              ▼
+Phase 2       Phase 3
+(VirtualKeyboard)  (URLBar 기본)
+    │              │
+    └──────┬───────┘
+           │
+           ▼
+       Phase 3.3
+     (URLBar 통합)
+           │
+           ▼
+       Phase 4
+   (자동완성, 선택적)
+           │
+           ▼
+       Phase 5
+   (BrowserWindow 통합)
+           │
+           ▼
+       Phase 6
+     (스타일링)
+           │
+           ▼
+       Phase 7
+     (테스트 작성)
+           │
+           ▼
+       Phase 8
+     (코드 리뷰)
 ```
-
-### 병렬 실행 가능 태스크
-- **Phase 1 (urlValidator.js)** 와 **Phase 2 (VirtualKeyboard)** 는 독립적이므로 병렬 실행 가능
-- Phase 3 이후는 순차 실행 필수
 
 ---
 
 ## 4. 병렬 실행 판단
 
-### Agent Team 사용 권장: **No (단독 실행 권장)**
+### 병렬 가능한 태스크
+- **Phase 1 (URLValidator)** 와 **Phase 2 (VirtualKeyboard)** 는 독립적이므로 병렬 실행 가능
+- **Phase 7.1 (URLValidator 테스트)** 와 **Phase 7.2 (VirtualKeyboard 테스트)** 는 독립적이므로 병렬 실행 가능
 
-#### 이유
-1. **컴포넌트 강한 결합**:
-   - URLBar와 VirtualKeyboard는 서로 긴밀하게 통합됨 (포커스 전환, 이벤트 전달)
-   - 한 에이전트가 전체 흐름을 이해하고 구현하는 것이 효율적
-2. **상태 관리 공유**:
-   - URLBar의 inputValue가 VirtualKeyboard에서 변경됨
-   - 두 컴포넌트 간 인터페이스 조율 필요 → 단독 작업이 더 빠름
-3. **프로젝트 규모**:
-   - 총 예상 시간: 약 8-10시간 (Phase 1-6 기준)
-   - 병렬화 이득 < 조율 비용
-4. **테스트 단계 의존성**:
-   - Phase 5, 6은 모든 컴포넌트가 완성되어야 진행 가능
-   - 병렬 작업 후 통합 시점에 디버깅 비용 증가 가능
+### Agent Team 사용 권장 여부
+**권장하지 않음** (순차 실행 권장)
 
-#### 병렬 작업이 유리한 경우 (선택적)
-- **Phase 1 (urlValidator.js)** 와 **Phase 2 (VirtualKeyboard)** 만 병렬 실행 가능
-  - 두 작업은 완전 독립적 (공유 의존성 없음)
-  - Agent Team으로 1시간 절약 가능 (2.5시간 → 1.5시간)
-- 하지만 총 작업 시간에 비해 절감 효과가 크지 않으므로 **단독 실행 권장**
+#### 이유:
+1. **의존성 체인**: Phase 3은 Phase 1, 2 완료 후 시작해야 하며, Phase 5는 Phase 3 완료 후 시작해야 함. 의존성이 복잡하지 않고 선형적이므로 순차 실행이 더 안전함.
+2. **단일 개발자 컨텍스트**: URLBar, VirtualKeyboard, URLValidator는 모두 URL 입력 UI라는 하나의 기능 도메인에 속하므로, 단일 개발자(cpp-dev)가 전체 컨텍스트를 이해하며 순차 작업하는 것이 효율적임.
+3. **통합 테스트 필요**: Phase 3에서 URLBar와 VirtualKeyboard를 통합하므로, 두 컴포넌트를 병렬로 개발하면 통합 시 충돌 가능성이 있음.
+4. **PG-1 그룹 특성**: F-03은 F-04 (네비게이션 바), F-05 (로딩 인디케이터)와 병렬 구현 가능하지만, F-03 자체 내부에서는 Phase가 순차적으로 진행되는 것이 안전함.
+
+#### 대안:
+- F-03, F-04, F-05를 **별도 브랜치**에서 병렬 개발 (feature/url-input-ui, feature/navigation-bar, feature/loading-indicator)
+- F-03 내부는 순차 실행 (Phase 1 → Phase 2 → Phase 3 → ... → Phase 8)
 
 ---
 
-## 5. 리스크 및 대응 방안
+## 5. 예상 소요 시간
 
-| 리스크 | 영향도 | 발생 확률 | 대응 방안 |
-|--------|--------|----------|-----------|
-| **Spotlight 포커스 충돌** | 높음 | 중간 | - VirtualKeyboard를 SpotlightContainer로 격리 (`restrict: 'self-only'`)<br>- URLBar에서 명시적으로 Spotlight.focus() 호출<br>- 로컬 브라우저에서 탭 키로 사전 테스트 |
-| **리모컨 백 버튼 이벤트 처리 실패** | 중간 | 낮음 | - BrowserView에서 onKeyDown으로 백 버튼 캡처<br>- event.preventDefault()로 기본 동작 방지<br>- 실제 디바이스에서 keyCode 확인 (8 또는 461) |
-| **URL 검증 로직 예외 케이스** | 중간 | 중간 | - 단위 테스트에서 다양한 URL 형식 커버 (프로토콜, 경로, 쿼리, 특수문자)<br>- localhost, IP 주소 별도 처리<br>- 검색어 판단 기준 명확화 (점 유무) |
-| **가상 키보드 성능 저하** | 중간 | 낮음 | - 키 렌더링에 React.memo 적용 (필요 시)<br>- Spotlight 포커스 이동 최적화<br>- 실제 디바이스에서 성능 테스트 |
-| **Enact Input 기본 동작과 충돌** | 낮음 | 중간 | - VirtualKeyboard에서 Input의 value를 직접 제어<br>- onChange 이벤트를 VirtualKeyboard 입력 시에만 발생하도록 제어<br>- readOnly 속성 사용 안 함 (포커스 표시 필요) |
-| **자동완성 데이터 통합 지연** | 낮음 | 중간 | - F-07, F-08 완료 전까지는 suggestions=[] 로 비활성화<br>- AutocompleteDropdown은 Phase 7에서 구현 (선택적)<br>- 기본 URL 입력 기능은 자동완성 없이도 동작 |
-| **검색 엔진 통합 지연** | 낮음 | 중간 | - F-09 완료 전까지는 검색어 입력 시 null 반환 (에러 처리)<br>- Phase 9는 선택적으로 나중에 진행 가능<br>- 기본 URL 입력 기능은 검색 엔진 없이도 동작 |
-| **실제 디바이스 테스트 실패** | 높음 | 낮음 | - 로컬 브라우저에서 사전 테스트 충분히 진행 (Phase 5)<br>- 리모컨 키 매핑 문서 확인<br>- ares-log로 실시간 로그 확인하며 디버깅 |
+| Phase | 예상 시간 | 비고 |
+|-------|----------|------|
+| Phase 1: URLValidator 구현 | 2시간 | 정규표현식 테스트 포함 |
+| Phase 2: VirtualKeyboard 구현 | 4시간 | 그리드 레이아웃 + 키 이벤트 처리 |
+| Phase 3: URLBar 구현 | 4시간 | UI + 검증 로직 + VirtualKeyboard 통합 |
+| Phase 4: 자동완성 구현 (선택) | 3시간 | F-07, F-08 완료 후 활성화 |
+| Phase 5: BrowserWindow 통합 | 1시간 | 시그널/슬롯 연결 |
+| Phase 6: 스타일링 | 1시간 | QSS 파일 작성 |
+| Phase 7: 테스트 작성 | 3시간 | 단위 + 통합 테스트 |
+| Phase 8: 코드 리뷰 | 2시간 | 문서 검증 포함 |
+| **총 예상 시간** | **20시간** | **자동완성 포함 시 20시간, 미포함 시 17시간** |
 
----
-
-## 6. 검증 계획
-
-### 단위 테스트 (Jest + Enact Testing Library)
-- **urlValidator.js**: 모든 URL 형식 테스트 (프로토콜, 도메인, localhost, 특수문자)
-- **VirtualKeyboard.js**: 렌더링, 키 클릭, 콜백 호출 테스트
-- **URLBar.js**: 렌더링, 포커스, 키보드 입력, 제출, 취소 테스트
-- **커버리지 목표**: 80% 이상
-
-### 통합 테스트 (로컬 브라우저)
-- URLBar ↔ VirtualKeyboard 포커스 전환
-- URL 입력 → 검증 → WebView 전달 흐름
-- 백 버튼으로 키보드 닫기
-
-### 실제 디바이스 테스트 (webOS 프로젝터)
-- 리모컨 조작 시나리오 (requirements.md AC-1~AC-8)
-- 주요 웹사이트 URL 입력 및 로드
-- 성능 측정 (입력 반응 속도, 키보드 렌더링 시간)
-- 가독성 확인 (3m 거리)
-
-### 회귀 테스트
-- 긴 URL 입력 시 말줄임(...) 처리
-- 특수문자 포함 URL 정상 입력 및 로드
-- 유효하지 않은 URL 입력 시 에러 메시지 표시
+### 현실적 일정 (1일 = 6시간 개발 가능 시)
+- **자동완성 미포함**: 3일 (17시간 / 6시간)
+- **자동완성 포함**: 4일 (20시간 / 6시간)
 
 ---
 
-## 7. 예상 산출물 요약
+## 6. 리스크 및 대응
 
-### 소스 코드
-- `src/utils/urlValidator.js`
-- `src/components/VirtualKeyboard/keyboardLayout.js`
-- `src/components/VirtualKeyboard/VirtualKeyboard.js`
-- `src/components/VirtualKeyboard/VirtualKeyboard.module.less`
-- `src/components/VirtualKeyboard/index.js`
-- `src/components/URLBar/URLBar.js`
-- `src/components/URLBar/URLBar.module.less`
-- `src/components/URLBar/index.js`
-- `src/views/BrowserView.js` (수정)
-- `src/views/BrowserView.module.less` (수정)
-
-### 테스트 코드
-- `src/__tests__/utils/urlValidator.test.js`
-- `src/__tests__/components/VirtualKeyboard.test.js`
-- `src/__tests__/components/URLBar.test.js`
-
-### 선택적 (F-07, F-08, F-09 연동 시)
-- `src/components/URLBar/AutocompleteDropdown.js`
-- `src/hooks/useAutocompleteSuggestions.js`
-- `src/services/searchService.js`
-
-### 문서
-- `docs/components/URLBar.md`
-- `docs/components/VirtualKeyboard.md`
-- `CHANGELOG.md` (수정)
+| 리스크 | 영향도 | 대응 방안 |
+|--------|--------|-----------|
+| **webOS 리모컨 키 코드가 Qt::Key enum과 다를 수 있음** | 높음 | - webOS 실기기에서 키 코드 로깅 테스트<br>- keyPressEvent에서 event->key() 값 출력하여 매핑 확인<br>- 필요 시 커스텀 키 매핑 테이블 작성 |
+| **VirtualKeyboard 그리드 포커스 이동 로직 복잡도** | 중간 | - 단순한 모듈러 연산 방식 사용 (행, 열 순환 이동)<br>- 단위 테스트로 모든 포커스 이동 경로 검증<br>- 디버깅 시 현재 포커스 위치 로깅 |
+| **QSS 스타일이 webOS에서 다르게 렌더링될 수 있음** | 중간 | - 초기에 최소한의 QSS만 사용 (테두리, 배경색, 폰트 크기)<br>- 실기기에서 테스트 후 스타일 조정<br>- 복잡한 그라데이션, 그림자 효과 지양 |
+| **F-07, F-08 미완료 시 자동완성 기능 지연** | 낮음 | - Phase 4를 선택적 Phase로 설정<br>- F-07, F-08 완료 후 자동완성 통합<br>- 현재는 스켈레톤 코드만 남겨두고 나중에 활성화 |
+| **URLBar와 WebView 간 시그널/슬롯 연결 실패** | 중간 | - BrowserWindow::setupConnections()에서 connect 반환값 검증<br>- qDebug로 시그널 발생 로깅<br>- Qt 문서 참조하여 시그널 시그니처 정확히 일치시킴 |
+| **가상 키보드 메모리 누수 (QPushButton 배열)** | 낮음 | - QObject 부모-자식 관계로 자동 삭제 보장<br>- QGridLayout이 소유권 관리<br>- 단위 테스트에서 Valgrind로 메모리 검증 |
+| **URL 자동 보완 로직이 엣지 케이스에서 실패** | 중간 | - URLValidator 단위 테스트에서 엣지 케이스 포함<br>  (예: localhost, 192.168.1.1, file://, 특수문자 포함 URL)<br>- QUrl::fromUserInput() 활용으로 표준 처리 |
+| **리모컨 포커스 경로가 직관적이지 않음** | 중간 | - 사용자 테스트 (실제 프로젝터에서 테스트)<br>- 포커스 경로 문서화 (design.md 참조)<br>- 필요 시 setTabOrder 또는 커스텀 포커스 네비게이션 수정 |
 
 ---
 
-## 8. 예상 소요 시간
+## 7. 생성/수정 파일 목록
 
-| Phase | 예상 시간 |
-|-------|----------|
-| Phase 1: urlValidator.js | 30분 |
-| Phase 2: VirtualKeyboard | 2시간 |
-| Phase 3: URLBar (기본 버전) | 1.5시간 |
-| Phase 4: BrowserView 통합 | 45분 |
-| Phase 5: Spotlight 통합 및 테스트 | 1시간 |
-| Phase 6: 실제 디바이스 테스트 | 1시간 |
-| **Phase 1-6 합계 (기본 기능)** | **약 6.75시간** |
-| Phase 7: AutocompleteDropdown (선택적) | 1시간 |
-| Phase 8: 자동완성 데이터 통합 (선택적) | 45분 |
-| Phase 9: 검색 엔진 통합 (선택적) | 30분 |
-| Phase 10: 최종 테스트 및 문서화 | 1.5시간 |
-| **전체 합계 (모든 기능)** | **약 10.5시간** |
+### 새로 생성할 파일
+```
+src/ui/VirtualKeyboard.h            # 가상 키보드 헤더
+src/ui/VirtualKeyboard.cpp          # 가상 키보드 구현
+src/ui/URLBar.cpp                   # URLBar 구현 (헤더는 이미 존재 가정)
+src/utils/URLValidator.cpp          # URL 검증 유틸리티 구현 (헤더는 이미 존재 가정)
+resources/styles/urlbar.qss         # QSS 스타일 (선택적)
+tests/unit/URLValidatorTest.cpp    # URLValidator 단위 테스트
+tests/unit/VirtualKeyboardTest.cpp # VirtualKeyboard 단위 테스트
+tests/integration/URLBarIntegrationTest.cpp  # URLBar 통합 테스트
+```
 
-### 우선순위
-- **Must (Phase 1-6)**: 기본 URL 입력 및 페이지 로드 기능 → **6.75시간**
-- **Should (Phase 7-8)**: 자동완성 기능 (F-07, F-08 완료 후) → **+1.75시간**
-- **Could (Phase 9)**: 검색 엔진 통합 (F-09 완료 후) → **+0.5시간**
-- **문서화 (Phase 10)**: 최종 테스트 및 문서 → **+1.5시간**
+### 수정할 파일
+```
+src/browser/BrowserWindow.h         # URLBar 멤버 변수 추가, 헤더 인클루드
+src/browser/BrowserWindow.cpp       # setupUI, setupConnections 수정
+CMakeLists.txt                      # 새 파일들 추가 (VirtualKeyboard, URLValidator)
+tests/CMakeLists.txt                # 테스트 파일 추가
+resources.qrc                       # QSS 리소스 추가 (선택적)
+```
 
 ---
 
-## 9. 최종 확인 사항
+## 8. 완료 기준 체크리스트
 
-### 완료 기준 체크리스트
-- [ ] URLBar 컴포넌트 구현 완료
-- [ ] VirtualKeyboard 컴포넌트 구현 완료
-- [ ] URL 검증 및 자동 보완 기능 구현 완료
-- [ ] BrowserView에 통합 완료
-- [ ] Spotlight 포커스 관리 정상 동작
-- [ ] 리모컨 키 매핑 정상 동작 (실제 디바이스)
-- [ ] 주요 웹사이트 URL 입력 및 로드 성공
-- [ ] 성능 요구사항 충족 (입력 반응 0.3초, 키보드 렌더링 1초)
-- [ ] 가독성 요구사항 충족 (3m 거리, 폰트 크기)
-- [ ] 단위 테스트 통과 (80% 이상 커버리지)
-- [ ] requirements.md의 모든 AC 통과
-- [ ] 컴포넌트 문서 작성 완료
-- [ ] CHANGELOG 업데이트 완료
+### 기능 요구사항 (FR)
+- [ ] FR-1: URL 입력 필드가 화면 상단에 표시되고, 리모컨 포커스 가능
+- [ ] FR-2: 가상 키보드가 리모컨 방향키로 조작 가능, 모든 키 입력 지원
+- [ ] FR-3: 자동완성 팝업이 히스토리/북마크에서 제안 표시 (F-07, F-08 완료 후)
+- [ ] FR-4: URL 유효성 검증 및 자동 보완 (프로토콜 자동 추가)
+- [ ] FR-5: Enter 키로 URL 제출 시 WebView에서 페이지 로드
+- [ ] FR-6: 리모컨 키 매핑 (방향키, Select, Back, Enter) 정상 동작
 
-### 다음 단계
-- F-04 (페이지 탐색 UI): NavigationBar와 URLBar 간 포커스 이동 경로 조정
-- F-07 (북마크 관리): AutocompleteDropdown 데이터 제공
-- F-08 (히스토리 관리): AutocompleteDropdown 데이터 제공
-- F-09 (검색 엔진 통합): URL이 아닌 검색어 입력 시 검색 엔진으로 쿼리
+### 비기능 요구사항 (NFR)
+- [ ] 성능: 리모컨 입력 후 0.3초 이내 UI 반응
+- [ ] 가독성: 폰트 크기 18px (입력 필드), 20px (가상 키보드)
+- [ ] UX: 포커스된 요소가 3px 테두리로 명확히 표시
+- [ ] 확장성: 향후 한글 키보드 추가 가능하도록 VirtualKeyboard 모듈화
+
+### 테스트
+- [ ] URLValidator 단위 테스트 통과
+- [ ] VirtualKeyboard 단위 테스트 통과
+- [ ] URLBar 통합 테스트 통과
+- [ ] 실기기에서 리모컨 테스트 완료
+
+### 문서화
+- [ ] 코드 주석 작성 (한국어)
+- [ ] requirements.md 완료 기준 (AC-1~AC-8) 검증
+- [ ] design.md 설계 준수 확인
+- [ ] CHANGELOG.md 업데이트 (F-03 완료 내역)
+- [ ] dev-log.md 진행 로그 기록
+
+---
+
+## 9. 다음 단계 (F-03 완료 후)
+
+### 즉시 진행 가능
+- **F-04 (네비게이션 바)**: URLBar 완료 후 병렬 진행 가능 (독립적)
+- **F-05 (로딩 인디케이터)**: WebView::loadStarted/loadFinished 시그널 연결만 필요 (독립적)
+
+### F-03 의존 기능
+- **F-09 (검색 엔진 통합)**: URLValidator::isSearchQuery()가 true일 때 검색 엔진 URL 생성
+  - URLBar::validateAndCompleteUrl() 수정 필요
+- **F-14 (HTTPS 보안 표시)**: URLBar에 보안 아이콘 추가
+  - URLBar::inputLayout_에 securityIcon_ 위젯 추가
+
+### 자동완성 기능 활성화
+- **F-07 (북마크 관리) 완료 후**: BookmarkService::search() 연결
+- **F-08 (히스토리 관리) 완료 후**: HistoryService::search() 연결
+- URLBar::searchAutocomplete() 스켈레톤 코드 활성화
 
 ---
 
@@ -752,4 +545,4 @@ Phase 3: URLBar ──▶ Phase 4: BrowserView 통합
 
 | 날짜 | 변경 내용 | 작성자 |
 |------|-----------|--------|
-| 2026-02-12 | 최초 작성 | product-manager |
+| 2026-02-14 | Native App (C++/Qt) 버전으로 재작성 | product-manager |

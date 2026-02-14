@@ -1,1092 +1,877 @@
-# 페이지 탐색 컨트롤 — 기술 설계서
+# 페이지 탐색 컨트롤 — 기술 설계서 (Native App)
 
 ## 1. 참조
-- 요구사항 분석서: `docs/specs/navigation-controls/requirements.md`
-- 웹뷰 설계서: `docs/specs/webview-integration/design.md`
-- PRD: `docs/project/prd.md`
-- CLAUDE.md: `/Users/jsong/dev/jsong1230-github/webosbrowser/CLAUDE.md`
+- 요구사항 분석서: docs/specs/navigation-controls/requirements.md
+- F-02 설계서: docs/specs/webview-integration/design.md
+- WebView 헤더: src/browser/WebView.h
+- BrowserWindow 헤더: src/browser/BrowserWindow.h
+- CLAUDE.md: /Users/jsong/dev/jsong1230-github/webosbrowser-native/CLAUDE.md
 
 ## 2. 아키텍처 개요
 
 ### 전체 구조
-NavigationBar는 웹 브라우저의 핵심 탐색 기능(뒤로 가기, 앞으로 가기, 새로고침, 홈)을 리모컨 최적화 버튼 UI로 제공합니다. WebView의 iframe history API를 제어하여 페이지 네비게이션을 담당하며, Enact Spotlight와 통합되어 리모컨 포커스 관리를 지원합니다.
+Qt Widgets 기반의 NavigationBar 컴포넌트로 브라우저 네비게이션 UI를 구현합니다. WebView의 히스토리 API와 연동하여 뒤로/앞으로/새로고침/홈 버튼 기능을 제공하고, webOS 리모컨 입력에 최적화된 포커스 네비게이션을 구현합니다.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      BrowserView                         │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │                   URLBar (F-03)                     │ │
-│  └────────────────────────────────────────────────────┘ │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │                  WebView Component                  │ │
-│  │  ┌──────────────────────────────────────────────┐  │ │
-│  │  │           <iframe> (웹 콘텐츠)                │  │ │
-│  │  │  - history.back() ◀── NavigationBar 제어     │  │ │
-│  │  │  - history.forward() ◀── NavigationBar 제어  │  │ │
-│  │  │  - location.reload() ◀── NavigationBar 제어  │  │ │
-│  │  └──────────────────────────────────────────────┘  │ │
-│  └────────────────────────────────────────────────────┘ │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │             NavigationBar (F-04)                    │ │
-│  │  [ ← 뒤로 ] [ 앞으로 → ] [ 🔄 새로고침 ] [ 🏠 홈 ] │ │
-│  │      ▲           ▲            ▲            ▲       │ │
-│  │      └───────────┴────────────┴────────────┘       │ │
-│  │         Enact Spotlight 포커스 관리               │ │
-│  └────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│                  BrowserWindow (QMainWindow)                   │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │                  URLBar (F-03)                            │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │              NavigationBar (QWidget)                      │ │
+│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐            │ │
+│  │  │  Back  │ │Forward │ │ Reload │ │  Home  │  QPushButton│ │
+│  │  │   ←    │ │   →    │ │   ↻    │ │   ⌂    │            │ │
+│  │  └────────┘ └────────┘ └────────┘ └────────┘            │ │
+│  │  [ QHBoxLayout ]                                          │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │                  WebView (QWidget)                        │ │
+│  │  - canGoBack(), canGoForward()                            │ │
+│  │  - goBack(), goForward(), reload()                        │ │
+│  │  - signals: urlChanged(), loadStarted(), loadFinished()   │ │
+│  └──────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────────┘
+
+리모컨 방향키 (Qt::Key_Left, Qt::Key_Right)
+    ↓
+Qt Focus Chain (setTabOrder)
+    ↓
+버튼 포커스 이동 (흰색 테두리)
+    ↓
+리모컨 선택 (Qt::Key_Enter, Qt::Key_Select)
+    ↓
+버튼 클릭 → WebView API 호출
+
+WebView::urlChanged(QUrl)
+    ↓
+NavigationBar::updateButtonStates()
+    ↓
+canGoBack()/canGoForward() 체크
+    ↓
+setEnabled(bool) → 버튼 활성/비활성 업데이트
 ```
 
 ### 핵심 설계 원칙
-1. **WebView와의 명확한 인터페이스**: NavigationBar는 iframe ref를 통해 직접 history API 제어
-2. **상태 동기화**: WebView의 onNavigationChange 이벤트를 구독하여 버튼 활성/비활성 상태 실시간 업데이트
-3. **리모컨 포커스 최적화**: Enact Spotlight로 버튼 간 수평 이동, WebView와의 수직 이동 관리
-4. **에러 허용 설계**: iframe history API 호출 실패 시 조용히 실패 (UI 변화 없음)
-5. **CORS 대응**: Same-Origin Policy로 인한 제약을 Props 기반 상태 관리로 우회
+1. **Qt Widgets 표준 사용**: QPushButton, QHBoxLayout으로 간단한 UI 구성
+2. **시그널/슬롯 연동**: WebView의 시그널로 버튼 상태 자동 동기화
+3. **포커스 기반 네비게이션**: Qt Focus Policy와 Tab Order로 리모컨 입력 처리
+4. **스마트 포인터 불필요**: 버튼은 QWidget의 자식으로 자동 메모리 관리
+5. **중앙 집중 키 이벤트**: BrowserWindow::keyPressEvent()에서 리모컨 Back 키 처리
 
 ## 3. 아키텍처 결정
 
-### 결정 1: iframe history API 제어 방식
+### 결정 1: 버튼 위젯 타입
 - **선택지**:
-  - A) NavigationBar가 WebView의 iframe ref를 직접 참조하여 history API 호출
-  - B) NavigationBar가 BrowserView에 이벤트를 발생시키고, BrowserView가 WebView에 전달
-  - C) postMessage로 iframe 내부에 메시지 전달하여 history 제어
-- **결정**: A) NavigationBar가 iframe ref 직접 참조
+  - A) QPushButton (범용 버튼)
+  - B) QToolButton (아이콘 전용 버튼, 툴바 용도)
+  - C) 커스텀 QWidget (직접 페인팅)
+- **결정**: A) QPushButton
 - **근거**:
-  - iframe의 history API(back, forward, go)는 외부에서 직접 호출 가능 (Same-Origin Policy 영향 없음)
-  - 이벤트 중개자(BrowserView)를 거치는 B안은 불필요한 레이어 추가
-  - postMessage(C안)는 iframe 내부 스크립트 필요 → 외부 사이트 제어 불가
-  - React의 useImperativeHandle로 WebView에서 iframe ref를 안전하게 노출 가능
+  - **표준 동작**: QPushButton은 Qt의 가장 기본적인 버튼 위젯으로 클릭, 포커스, 키보드 이벤트를 모두 지원
+  - **스타일시트 지원**: QSS로 쉽게 스타일링 가능 (포커스 테두리, 비활성 상태 등)
+  - **아이콘 + 텍스트**: setIcon(), setText()로 아이콘과 라벨 모두 설정 가능 (향후 확장성)
+  - **프로젝터 UI**: 큰 버튼이 필요한 프로젝터 환경에서 QPushButton이 적합 (QToolButton은 작은 아이콘용)
 - **트레이드오프**:
-  - **장점**: 직접 제어로 응답 속도 빠름 (0.1초 이내), 코드 간결
-  - **단점**: NavigationBar가 WebView 내부 구현에 의존 (결합도 증가)
-  - **대응**: ref 인터페이스를 명확히 정의하여 의존성 최소화
+  - **포기**: QToolButton의 툴바 특화 기능 (팝업 메뉴, 딜레이 등) 불필요
+  - **얻음**: 단순한 구조, 명확한 의도
 
-### 결정 2: 버튼 활성/비활성 상태 관리
+### 결정 2: 버튼 레이아웃
 - **선택지**:
-  - A) NavigationBar가 iframe.contentWindow.history.length를 직접 읽어서 판단
-  - B) WebView가 onNavigationChange 이벤트에서 히스토리 상태를 함께 전달
-  - C) BrowserView에서 히스토리 스택을 별도 상태로 관리
-- **결정**: B) WebView가 히스토리 상태 전달 (CORS 제약으로 불가능한 경우 기본 활성화)
+  - A) QHBoxLayout (가로 배치)
+  - B) QGridLayout (2x2 그리드)
+  - C) QToolBar (툴바 컨테이너)
+- **결정**: A) QHBoxLayout
 - **근거**:
-  - iframe의 history 객체는 Same-Origin Policy로 다른 도메인 페이지에서 접근 불가
-  - A안은 CORS 에러 발생 시 버튼 상태 업데이트 실패
-  - C안은 브라우저 자체 히스토리 스택과 불일치 가능성 (사용자가 iframe 내부에서 링크 클릭 시)
-  - B안은 WebView가 주기적으로 감지한 히스토리 상태를 전달하여 최신 상태 유지
-- **트레이드오프**:
-  - **장점**: CORS 제약 우회, 히스토리 상태 정확도 향상
-  - **단점**: CORS 환경에서는 히스토리 상태 감지 불가 → 버튼 항상 활성화
-  - **대응**: CORS 환경에서는 버튼 클릭 시 동작 실패 시에도 UI 에러 표시 없이 무시
+  - **단순성**: 4개 버튼을 좌→우로 일렬 배치가 가장 직관적
+  - **리모컨 포커스**: 좌/우 방향키만으로 모든 버튼 접근 가능 (2차원 네비게이션 불필요)
+  - **PRD 요구사항**: "리모컨 최적화 UX"는 단순한 포커스 흐름을 요구
+  - **확장성**: spacing, stretch로 간격 조정 용이
+- **트레이드오프**: 그리드 레이아웃의 공간 활용도는 떨어지지만, UX는 우수
 
-### 결정 3: 리모컨 Back 키 처리 레벨
+### 결정 3: 버튼 상태 동기화 메커니즘
 - **선택지**:
-  - A) NavigationBar 컴포넌트에서 Back 키 캡처
-  - B) BrowserView에서 Back 키 캡처 (전역 처리)
-  - C) WebView에서 Back 키 캡처
-- **결정**: B) BrowserView에서 전역 처리
+  - A) WebView::urlChanged() 시그널에 슬롯 연결
+  - B) 주기적 폴링 (QTimer로 100ms마다 확인)
+  - C) WebView에 별도 시그널 추가 (historyChanged())
+- **결정**: A) WebView::urlChanged() 시그널 사용
 - **근거**:
-  - Back 키 동작은 현재 포커스 위치에 따라 다름 (WebView 포커스 시: 브라우저 뒤로, NavigationBar 포커스 시: 포커스 이탈)
-  - BrowserView가 전체 레이아웃을 관리하므로 포커스 상태 판단 용이
-  - NavigationBar 단독 처리(A안)는 WebView 포커스 상태 확인 어려움
-  - WebView 처리(C안)는 NavigationBar 포커스 상태 확인 어려움
-- **트레이드오프**:
-  - **장점**: 포커스 흐름 중앙 관리로 일관성 유지
-  - **단점**: BrowserView가 리모컨 입력 로직 포함 → 복잡도 증가
-  - **대응**: 별도 커스텀 Hook(useRemoteControl)으로 분리하여 재사용성 확보
+  - **이미 구현됨**: WebView.h에 urlChanged(QUrl) 시그널이 존재 (F-02 완료)
+  - **즉시 반응**: URL 변경 시 즉시 버튼 상태 업데이트 (폴링보다 효율적)
+  - **표준 Qt 패턴**: 시그널/슬롯은 Qt의 표준 이벤트 메커니즘
+  - **추가 구현 불필요**: WebView 수정 없이 기존 API 활용
+- **트레이드오프**: urlChanged() 외에 loadStarted(), loadFinished()도 연결하여 더 정확한 상태 업데이트 가능
 
-### 결정 4: NavigationBar UI 프레임워크
+### 결정 4: 홈페이지 URL 관리
 - **선택지**:
-  - A) Enact Moonstone Button 컴포넌트 사용
-  - B) 커스텀 버튼 컴포넌트 (Spottable HOC 사용)
-  - C) HTML button + CSS 스타일링
-- **결정**: A) Enact Moonstone Button 사용
+  - A) 하드코딩 (private const QString)
+  - B) SettingsService에서 조회 (F-11 의존)
+  - C) 환경 변수 또는 설정 파일 읽기
+- **결정**: A) 하드코딩 (현 단계), B) 마이그레이션 계획 (F-11)
 - **근거**:
-  - Moonstone Button은 리모컨 포커스, 테마, 애니메이션이 기본 제공됨
-  - Spotlight 통합이 자동으로 되어 있어 포커스 관리 간편
-  - webOS 플랫폼 UI 가이드라인 준수 (일관된 UX)
-  - 커스텀 구현(B, C)은 접근성, 테마, 포커스 로직 직접 구현 필요 (개발 시간 증가)
-- **트레이드오프**:
-  - **장점**: 개발 속도 빠름, 안정성 높음, 접근성 자동 지원
-  - **단점**: Moonstone 스타일에 제약 (커스터마이징 제한적)
-  - **대응**: CSS Modules로 추가 스타일링, 필요 시 minWidth, icon props 활용
+  - **현 단계 범위**: F-04는 F-11(설정 화면)에 의존하지 않음 (features.md 확인)
+  - **기본값 제공**: "https://www.google.com"을 private 멤버로 정의
+  - **향후 확장**: F-11 구현 시 SettingsService::getHomePage()로 교체
+- **구현 방식**:
+  ```cpp
+  // NavigationBar.h
+  private:
+      const QString DEFAULT_HOME_URL = "https://www.google.com";
 
-### 결정 5: 홈페이지 URL 관리
+  // F-11 구현 후:
+  QString homeUrl = settingsService_->getHomePage();
+  webView_->load(homeUrl);
+  ```
+- **트레이드오프**: 초기 단계는 유연성 부족, 하지만 의존성 제거로 개발 속도 향상
+
+### 결정 5: 리모컨 Back 키 처리 위치
 - **선택지**:
-  - A) 하드코딩 (https://www.google.com)
-  - B) BrowserView 상태로 관리
-  - C) LS2 API로 영구 저장 (F-11 설정 화면과 연동)
-- **결정**: A) 현재는 하드코딩, F-11 구현 시 C로 확장
+  - A) NavigationBar::keyPressEvent() 오버라이드
+  - B) BrowserWindow::keyPressEvent() 중앙 처리
+  - C) Qt Event Filter 설치
+- **결정**: B) BrowserWindow::keyPressEvent() (F-02 설계서 따름)
 - **근거**:
-  - F-11(설정 화면)이 구현되기 전까지는 홈페이지 변경 UI 없음
-  - 하드코딩으로 최소 기능 구현 후 F-11에서 LS2 API로 확장
-  - B안(상태 관리)은 앱 재시작 시 초기화되어 의미 없음
-- **트레이드오프**:
-  - **장점**: 구현 간단, 초기 기능 제공 가능
-  - **단점**: 사용자 커스터마이징 불가
-  - **대응**: F-11 구현 시 설정 서비스로 확장 (설계 시점에 확장성 고려)
+  - **중앙 집중**: 리모컨 키 이벤트는 BrowserWindow 레벨에서 포커스 컨텍스트에 따라 분기 처리
+  - **포커스 인식**: WebView에 포커스 있을 때만 goBack() 호출 (NavigationBar 포커스 시 event->ignore())
+  - **F-02 설계서 결정**: "결정 5: 리모컨 키 이벤트 처리 - B) BrowserWindow에서 중앙 집중 처리"
+- **구현 위치**:
+  - **BrowserWindow.cpp**: keyPressEvent()에서 Qt::Key_Backspace 감지
+  - **NavigationBar**: 버튼 클릭으로만 goBack() 호출 (키 이벤트 직접 처리 안 함)
+- **트레이드오프**: NavigationBar의 자율성은 떨어지지만, 전체 포커스 흐름이 명확
 
-### 결정 6: 버튼 간격 및 레이아웃 방식
+### 결정 6: 비활성 버튼 스타일
 - **선택지**:
-  - A) Flexbox 수평 배치 (justify-content: space-between)
-  - B) Flexbox 수평 배치 (justify-content: center + gap)
-  - C) CSS Grid (4열 고정)
-- **결정**: B) Flexbox 중앙 정렬 + gap
+  - A) Qt 기본 disabled 스타일 (OS 의존)
+  - B) 커스텀 QSS 스타일시트 (opacity: 0.5)
+  - C) 아이콘 교체 (그레이 아이콘)
+- **결정**: B) 커스텀 QSS 스타일시트 + A) 기본 스타일 보조
 - **근거**:
-  - 버튼 수가 4개로 고정되어 있으며, 중앙 정렬이 시각적으로 균형감 제공
-  - gap 속성으로 버튼 간격 20px 일관되게 유지 (요구사항 NFR-2 준수)
-  - space-between(A안)은 화면 너비에 따라 간격 변동 (일관성 저하)
-  - Grid(C안)는 4개 버튼에는 과도한 레이아웃 (Flexbox로 충분)
-- **트레이드오프**:
-  - **장점**: 간결한 CSS, 일관된 간격, 중앙 정렬
-  - **단점**: 향후 버튼 추가 시 레이아웃 재조정 필요
-  - **대응**: 버튼 추가는 F-12(단축키) 이후 고려, 현재는 4개 고정
+  - **일관성**: webOS 전체 앱에서 통일된 비활성 스타일 필요
+  - **명확성**: opacity: 0.5로 비활성 상태가 직관적으로 보임
+  - **WCAG 준수**: 배경색과 대비 4.5:1 유지하면서 비활성 표시
+- **구현**:
+  ```cpp
+  QString styleSheet = R"(
+      QPushButton {
+          min-width: 100px;
+          min-height: 80px;
+          font-size: 16pt;
+          background-color: #333333;
+          color: white;
+          border: 2px solid transparent;
+      }
+      QPushButton:focus {
+          border: 2px solid white;
+      }
+      QPushButton:disabled {
+          opacity: 0.5;
+          color: #888888;
+      }
+  )";
+  ```
+- **트레이드오프**: Qt 기본 스타일보다 유지보수 부담 증가, 하지만 UX 품질 향상
 
-## 4. NavigationBar 컴포넌트 설계
+### 결정 7: 버튼 아이콘 vs 유니코드 텍스트
+- **선택지**:
+  - A) QIcon (PNG/SVG 이미지 파일)
+  - B) 유니코드 문자 (U+2190, U+21BB 등)
+  - C) 아이콘 폰트 (Font Awesome 등)
+- **결정**: B) 유니코드 문자 (초기 구현), A) 마이그레이션 계획
+- **근거**:
+  - **단순성**: 이미지 파일 관리 불필요, 코드만으로 UI 완성
+  - **확장성**: 유니코드 → QIcon 교체 시 setText() → setIcon()만 변경
+  - **PRD 요구사항**: 아이콘 32px x 32px는 Qt 기본 폰트 크기로도 달성 가능
+- **유니코드 심볼**:
+  - 뒤로: ← (U+2190) 또는 ◀ (U+25C0)
+  - 앞으로: → (U+2192) 또는 ▶ (U+25B6)
+  - 새로고침: ↻ (U+21BB) 또는 ⟲ (U+27F2)
+  - 홈: ⌂ (U+2302) 또는 🏠 (Emoji, webOS 지원 확인 필요)
+- **F-15 구현 시**: resources/icons/ 폴더에 SVG 추가 후 QIcon::fromTheme() 사용
+- **트레이드오프**: 프로덕션 품질은 이미지 아이콘이 우수, 하지만 PoC 단계는 유니코드로 충분
 
-### 컴포넌트 구조
+## 4. NavigationBar 클래스 설계
+
+### 클래스 구조
 ```
-src/components/NavigationBar/
-├── NavigationBar.js           # 메인 컴포넌트
-├── NavigationBar.module.less  # 스타일
-└── index.js                   # Export 진입점
-```
-
-### Props 인터페이스
-```javascript
-// src/components/NavigationBar/NavigationBar.js
-import PropTypes from 'prop-types'
-
-NavigationBar.propTypes = {
-	// WebView의 iframe ref (history API 제어용)
-	webviewRef: PropTypes.shape({
-		current: PropTypes.instanceOf(Element)
-	}).isRequired,
-
-	// 버튼 활성/비활성 상태 (WebView에서 전달)
-	canGoBack: PropTypes.bool,       // 뒤로 가기 가능 여부
-	canGoForward: PropTypes.bool,    // 앞으로 가기 가능 여부
-
-	// 홈페이지 URL (홈 버튼 클릭 시 이동할 URL)
-	homeUrl: PropTypes.string,
-
-	// 네비게이션 이벤트 콜백
-	onNavigate: PropTypes.func,      // 네비게이션 동작 시 호출 ({ action: 'back'|'forward'|'reload'|'home', url })
-
-	// 스타일 커스터마이징 (선택)
-	className: PropTypes.string
-}
-
-NavigationBar.defaultProps = {
-	canGoBack: false,
-	canGoForward: false,
-	homeUrl: 'https://www.google.com',
-	onNavigate: () => {},
-	className: ''
-}
+src/ui/
+├── NavigationBar.h       # 헤더 (기존 스켈레톤 파일 확장)
+├── NavigationBar.cpp     # 구현
 ```
 
-### 상태 정의
-```javascript
-// NavigationBar는 버튼 상태를 Props로 받으므로 내부 상태 최소화
-const [isNavigating, setIsNavigating] = useState(false)  // 네비게이션 진행 중 플래그 (중복 클릭 방지)
-```
+### NavigationBar.h (확장)
+```cpp
+/**
+ * @file NavigationBar.h
+ * @brief 네비게이션 바 컴포넌트 - 브라우저 네비게이션 버튼 UI
+ */
 
-## 5. WebView history API 제어 설계
+#pragma once
 
-### iframe ref 노출 (WebView 컴포넌트 수정)
-```javascript
-// src/components/WebView/WebView.js
-import { forwardRef, useImperativeHandle } from 'react'
+#include <QWidget>
+#include <QPushButton>
+#include <QHBoxLayout>
 
-const WebView = forwardRef(({ url, onLoadStart, ... }, ref) => {
-	const iframeRef = useRef(null)
+namespace webosbrowser {
 
-	// ref를 통해 iframe 요소 노출
-	useImperativeHandle(ref, () => ({
-		// iframe 요소 직접 접근
-		get iframe() {
-			return iframeRef.current
-		},
-
-		// 편의 메서드 제공 (선택)
-		goBack: () => {
-			if (iframeRef.current && iframeRef.current.contentWindow) {
-				try {
-					iframeRef.current.contentWindow.history.back()
-					return true
-				} catch (error) {
-					logger.error('[WebView] history.back() 실패:', error)
-					return false
-				}
-			}
-			return false
-		},
-
-		goForward: () => {
-			if (iframeRef.current && iframeRef.current.contentWindow) {
-				try {
-					iframeRef.current.contentWindow.history.forward()
-					return true
-				} catch (error) {
-					logger.error('[WebView] history.forward() 실패:', error)
-					return false
-				}
-			}
-			return false
-		},
-
-		reload: () => {
-			if (iframeRef.current && iframeRef.current.contentWindow) {
-				try {
-					iframeRef.current.contentWindow.location.reload()
-					return true
-				} catch (error) {
-					logger.error('[WebView] location.reload() 실패:', error)
-					return false
-				}
-			}
-			return false
-		}
-	}), [])
-
-	// ... 기존 코드 ...
-})
-```
-
-### NavigationBar에서 history API 호출
-```javascript
-// src/components/NavigationBar/NavigationBar.js
-
-// 뒤로 가기 버튼 핸들러
-const handleBack = useCallback(() => {
-	if (!canGoBack || isNavigating) return
-
-	setIsNavigating(true)
-
-	try {
-		// WebView ref를 통해 iframe history.back() 호출
-		if (webviewRef.current && webviewRef.current.contentWindow) {
-			webviewRef.current.contentWindow.history.back()
-
-			// 네비게이션 콜백 호출
-			if (onNavigate) {
-				onNavigate({ action: 'back' })
-			}
-
-			logger.info('[NavigationBar] 뒤로 가기 실행')
-		}
-	} catch (error) {
-		logger.error('[NavigationBar] 뒤로 가기 실패:', error)
-	} finally {
-		// 0.5초 후 플래그 해제 (중복 클릭 방지)
-		setTimeout(() => setIsNavigating(false), 500)
-	}
-}, [canGoBack, isNavigating, webviewRef, onNavigate])
-
-// 앞으로 가기 버튼 핸들러 (유사 로직)
-const handleForward = useCallback(() => { /* ... */ }, [canGoForward, isNavigating, webviewRef, onNavigate])
-
-// 새로고침 버튼 핸들러
-const handleReload = useCallback(() => {
-	if (isNavigating) return
-
-	setIsNavigating(true)
-
-	try {
-		if (webviewRef.current && webviewRef.current.contentWindow) {
-			webviewRef.current.contentWindow.location.reload()
-
-			if (onNavigate) {
-				onNavigate({ action: 'reload' })
-			}
-
-			logger.info('[NavigationBar] 새로고침 실행')
-		}
-	} catch (error) {
-		logger.error('[NavigationBar] 새로고침 실패:', error)
-	} finally {
-		setTimeout(() => setIsNavigating(false), 500)
-	}
-}, [isNavigating, webviewRef, onNavigate])
-
-// 홈 버튼 핸들러
-const handleHome = useCallback(() => {
-	if (isNavigating) return
-
-	setIsNavigating(true)
-
-	// BrowserView에 URL 변경 요청 (직접 iframe src 변경하지 않음)
-	if (onNavigate) {
-		onNavigate({ action: 'home', url: homeUrl })
-	}
-
-	logger.info('[NavigationBar] 홈으로 이동:', homeUrl)
-
-	setTimeout(() => setIsNavigating(false), 500)
-}, [isNavigating, homeUrl, onNavigate])
-```
-
-## 6. 히스토리 상태 동기화 설계
-
-### WebView에서 히스토리 상태 감지
-```javascript
-// src/components/WebView/WebView.js
+// Forward declaration
+class WebView;
 
 /**
- * 네비게이션 감지 및 히스토리 상태 추적
- * CORS 제약으로 Same-Origin이 아닌 경우 감지 불가
+ * @class NavigationBar
+ * @brief 뒤로/앞으로/새로고침/홈 버튼을 제공하는 네비게이션 바
+ *
+ * WebView와 시그널/슬롯으로 연동하여 버튼 상태를 자동 동기화합니다.
+ * Qt Focus Policy로 리모컨 방향키 네비게이션을 지원합니다.
  */
-useEffect(() => {
-	navigationIntervalRef.current = setInterval(() => {
-		try {
-			if (iframeRef.current && iframeRef.current.contentWindow) {
-				const history = iframeRef.current.contentWindow.history
-				const newUrl = iframeRef.current.contentWindow.location.href
+class NavigationBar : public QWidget {
+    Q_OBJECT
 
-				// URL 변경 감지
-				if (newUrl !== currentUrlRef.current) {
-					currentUrlRef.current = newUrl
+public:
+    /**
+     * @brief 생성자
+     * @param parent 부모 위젯
+     */
+    explicit NavigationBar(QWidget *parent = nullptr);
 
-					// 히스토리 상태 전달 (canGoBack, canGoForward는 추정)
-					// history.length는 Same-Origin에서만 접근 가능
-					const historyState = {
-						url: newUrl,
-						canGoBack: history.length > 1,  // 추정 (정확하지 않음)
-						canGoForward: false             // iframe에서는 직접 감지 불가
-					}
+    /**
+     * @brief 소멸자
+     */
+    ~NavigationBar() override;
 
-					// onNavigationChange 콜백 호출
-					if (onNavigationChange) {
-						onNavigationChange(historyState)
-					}
+    // 복사 생성자 및 대입 연산자 삭제
+    NavigationBar(const NavigationBar&) = delete;
+    NavigationBar& operator=(const NavigationBar&) = delete;
 
-					logger.info('[WebView] URL 변경 감지:', historyState)
-				}
-			}
-		} catch (error) {
-			// CORS 에러 시 무시 (Same-Origin Policy)
-			// 이 경우 NavigationBar 버튼은 항상 활성화 상태 유지
-		}
-	}, 500)
+    /**
+     * @brief WebView 인스턴스 설정 (시그널/슬롯 연결)
+     * @param webView WebView 포인터 (nullptr 가능, 연결 해제 시)
+     */
+    void setWebView(WebView *webView);
 
-	return () => {
-		if (navigationIntervalRef.current) {
-			clearInterval(navigationIntervalRef.current)
-		}
-	}
-}, [onNavigationChange])
+public slots:
+    /**
+     * @brief 버튼 상태 업데이트 (WebView 히스토리 상태 기반)
+     */
+    void updateButtonStates();
+
+private slots:
+    /**
+     * @brief 뒤로 버튼 클릭 핸들러
+     */
+    void onBackClicked();
+
+    /**
+     * @brief 앞으로 버튼 클릭 핸들러
+     */
+    void onForwardClicked();
+
+    /**
+     * @brief 새로고침 버튼 클릭 핸들러
+     */
+    void onReloadClicked();
+
+    /**
+     * @brief 홈 버튼 클릭 핸들러
+     */
+    void onHomeClicked();
+
+private:
+    /**
+     * @brief UI 초기화 (버튼 생성, 레이아웃 설정)
+     */
+    void setupUI();
+
+    /**
+     * @brief 시그널/슬롯 연결
+     */
+    void setupConnections();
+
+    /**
+     * @brief 스타일시트 적용 (QSS)
+     */
+    void applyStyles();
+
+    /**
+     * @brief 포커스 순서 설정 (리모컨 네비게이션)
+     */
+    void setupFocusOrder();
+
+private:
+    // UI 컴포넌트
+    QHBoxLayout *layout_;           ///< 가로 레이아웃
+    QPushButton *backButton_;       ///< 뒤로 버튼
+    QPushButton *forwardButton_;    ///< 앞으로 버튼
+    QPushButton *reloadButton_;     ///< 새로고침 버튼
+    QPushButton *homeButton_;       ///< 홈 버튼
+
+    // 데이터
+    WebView *webView_;              ///< WebView 인스턴스 (약한 참조)
+    const QString DEFAULT_HOME_URL = "https://www.google.com";  ///< 기본 홈페이지 URL
+};
+
+} // namespace webosbrowser
 ```
 
-### BrowserView에서 히스토리 상태 관리
-```javascript
-// src/views/BrowserView.js
+### NavigationBar.cpp (주요 메서드)
 
-const [canGoBack, setCanGoBack] = useState(false)
-const [canGoForward, setCanGoForward] = useState(false)
+#### setupUI() - UI 초기화
+```cpp
+void NavigationBar::setupUI() {
+    // 레이아웃 생성
+    layout_ = new QHBoxLayout(this);
+    layout_->setContentsMargins(10, 10, 10, 10);
+    layout_->setSpacing(20);  // 버튼 간격 20px (NFR-2)
 
-const handleNavigationChange = ({ url, canGoBack, canGoForward }) => {
-	logger.info('[BrowserView] URL 변경:', url)
+    // 버튼 생성
+    backButton_ = new QPushButton("←", this);     // 뒤로 (U+2190)
+    forwardButton_ = new QPushButton("→", this);  // 앞으로 (U+2192)
+    reloadButton_ = new QPushButton("↻", this);   // 새로고침 (U+21BB)
+    homeButton_ = new QPushButton("⌂", this);     // 홈 (U+2302)
 
-	// 히스토리 상태 업데이트
-	if (canGoBack !== undefined) {
-		setCanGoBack(canGoBack)
-	}
-	if (canGoForward !== undefined) {
-		setCanGoForward(canGoForward)
-	}
+    // 버튼 크기 설정 (NFR-2: 100x80px 이상)
+    QSize minSize(100, 80);
+    backButton_->setMinimumSize(minSize);
+    forwardButton_->setMinimumSize(minSize);
+    reloadButton_->setMinimumSize(minSize);
+    homeButton_->setMinimumSize(minSize);
 
-	// URLBar 업데이트 (F-03 연동)
-	// setCurrentUrl(url)
-}
+    // 포커스 정책 설정 (FR-5: 리모컨 포커스 네비게이션)
+    backButton_->setFocusPolicy(Qt::StrongFocus);
+    forwardButton_->setFocusPolicy(Qt::StrongFocus);
+    reloadButton_->setFocusPolicy(Qt::StrongFocus);
+    homeButton_->setFocusPolicy(Qt::StrongFocus);
 
-// NavigationBar에 Props 전달
-<NavigationBar
-	webviewRef={webviewRef}
-	canGoBack={canGoBack}
-	canGoForward={canGoForward}
-	homeUrl={homeUrl}
-	onNavigate={handleNavigate}
-/>
-```
+    // 접근성 설정 (NFR-3)
+    backButton_->setAccessibleName("뒤로 가기");
+    backButton_->setAccessibleDescription("이전 페이지로 이동합니다");
+    forwardButton_->setAccessibleName("앞으로 가기");
+    forwardButton_->setAccessibleDescription("다음 페이지로 이동합니다");
+    reloadButton_->setAccessibleName("새로고침");
+    reloadButton_->setAccessibleDescription("현재 페이지를 다시 로드합니다");
+    homeButton_->setAccessibleName("홈");
+    homeButton_->setAccessibleDescription("홈페이지로 이동합니다");
 
-**주의**: iframe의 history API는 length 속성만 제공하며, 현재 인덱스는 알 수 없습니다. 따라서 canGoForward는 정확히 감지할 수 없으며, 사용자가 뒤로 간 후에만 활성화하는 로직을 BrowserView에서 별도 관리해야 합니다.
+    // 레이아웃에 버튼 추가
+    layout_->addWidget(backButton_);
+    layout_->addWidget(forwardButton_);
+    layout_->addWidget(reloadButton_);
+    layout_->addWidget(homeButton_);
+    layout_->addStretch();  // 우측 공간 확보
 
-### canGoForward 정확히 추적하기 (BrowserView 로직)
-```javascript
-// src/views/BrowserView.js
-
-const [historyStack, setHistoryStack] = useState([])    // 방문 URL 스택
-const [historyIndex, setHistoryIndex] = useState(-1)    // 현재 위치 인덱스
-
-const handleNavigate = ({ action, url }) => {
-	logger.info('[BrowserView] 네비게이션 동작:', { action, url })
-
-	switch (action) {
-		case 'back':
-			if (historyIndex > 0) {
-				setHistoryIndex(historyIndex - 1)
-				setCurrentUrl(historyStack[historyIndex - 1])
-			}
-			break
-
-		case 'forward':
-			if (historyIndex < historyStack.length - 1) {
-				setHistoryIndex(historyIndex + 1)
-				setCurrentUrl(historyStack[historyIndex + 1])
-			}
-			break
-
-		case 'reload':
-			// URL 변경 없음, WebView에서 reload() 호출됨
-			break
-
-		case 'home':
-			// 홈으로 이동 → 스택 정리
-			setCurrentUrl(url)
-			setHistoryStack([url])
-			setHistoryIndex(0)
-			break
-
-		default:
-			logger.warn('[BrowserView] 알 수 없는 네비게이션 동작:', action)
-	}
-}
-
-const handleNavigationChange = ({ url }) => {
-	logger.info('[BrowserView] URL 변경:', url)
-
-	// 새 URL로 탐색 시 스택 업데이트
-	if (url !== historyStack[historyIndex]) {
-		// 현재 위치 이후 스택 제거 (앞으로 기록 삭제)
-		const newStack = historyStack.slice(0, historyIndex + 1)
-		newStack.push(url)
-		setHistoryStack(newStack)
-		setHistoryIndex(newStack.length - 1)
-		setCurrentUrl(url)
-	}
-}
-
-// canGoBack, canGoForward 계산
-const canGoBack = historyIndex > 0
-const canGoForward = historyIndex < historyStack.length - 1
-```
-
-## 7. Enact Spotlight 통합 설계
-
-### NavigationBar Spotlight 설정
-```javascript
-// src/components/NavigationBar/NavigationBar.js
-import Button from '@enact/moonstone/Button'
-import Spotlight from '@enact/spotlight'
-
-const NavigationBar = ({ webviewRef, canGoBack, canGoForward, homeUrl, onNavigate, className }) => {
-	return (
-		<div
-			className={`${css.navigationBar} ${className}`}
-			data-spotlight-container="navigation-bar"
-			data-spotlight-id="navigation-bar"
-		>
-			{/* 뒤로 가기 버튼 */}
-			<Button
-				className={css.navButton}
-				disabled={!canGoBack}
-				onClick={handleBack}
-				icon="arrowlargeleft"
-				spotlightId="nav-back"
-			>
-				뒤로
-			</Button>
-
-			{/* 앞으로 가기 버튼 */}
-			<Button
-				className={css.navButton}
-				disabled={!canGoForward}
-				onClick={handleForward}
-				icon="arrowlargeright"
-				spotlightId="nav-forward"
-			>
-				앞으로
-			</Button>
-
-			{/* 새로고침 버튼 */}
-			<Button
-				className={css.navButton}
-				onClick={handleReload}
-				icon="refresh"
-				spotlightId="nav-reload"
-			>
-				새로고침
-			</Button>
-
-			{/* 홈 버튼 */}
-			<Button
-				className={css.navButton}
-				onClick={handleHome}
-				icon="home"
-				spotlightId="nav-home"
-			>
-				홈
-			</Button>
-		</div>
-	)
+    // 초기 상태: WebView 없으므로 뒤로/앞으로 비활성
+    backButton_->setEnabled(false);
+    forwardButton_->setEnabled(false);
 }
 ```
 
-### Spotlight 포커스 흐름
-```
-URLBar (F-03)
-    │
-    ▼ (아래 방향키)
-WebView (spotlightId: "webview-main")
-    │
-    ▼ (아래 방향키 or Back 키)
-NavigationBar (data-spotlight-container)
-    │
-    ├── 뒤로 버튼 (spotlightId: "nav-back")
-    ├── 앞으로 버튼 (spotlightId: "nav-forward")
-    ├── 새로고침 버튼 (spotlightId: "nav-reload")
-    └── 홈 버튼 (spotlightId: "nav-home")
-         │
-         ▼ (좌/우 방향키로 버튼 간 이동)
-```
-
-### Spotlight 설정 (BrowserView)
-```javascript
-// src/views/BrowserView.js
-import Spotlight from '@enact/spotlight'
-
-useEffect(() => {
-	// 초기 포커스를 WebView로 설정
-	Spotlight.focus('webview-main')
-
-	// Spotlight 방향 설정 (위/아래 키로 WebView ↔ NavigationBar 전환)
-	Spotlight.set('webview-main', {
-		defaultElement: '.webviewContainer',
-		enterTo: 'default-element',
-		leaveFor: {
-			down: 'navigation-bar'  // 아래 방향키: NavigationBar로
-		}
-	})
-
-	Spotlight.set('navigation-bar', {
-		defaultElement: '[spotlightId="nav-back"]',
-		enterTo: 'default-element',
-		leaveFor: {
-			up: 'webview-main'  // 위 방향키: WebView로
-		}
-	})
-}, [])
-```
-
-## 8. 리모컨 Back 키 처리 설계
-
-### 커스텀 Hook: useRemoteControl
-```javascript
-// src/hooks/useRemoteControl.js
-import { useEffect } from 'react'
-import logger from '../utils/logger'
-
-/**
- * 리모컨 Back 키 처리 Hook
- * @param {Object} options
- * @param {boolean} options.isWebViewFocused - WebView에 포커스 있는지 여부
- * @param {Function} options.onBackInWebView - WebView 포커스 시 Back 키 동작
- * @param {Function} options.onBackOutsideWebView - WebView 외부 포커스 시 Back 키 동작
- */
-const useRemoteControl = ({ isWebViewFocused, onBackInWebView, onBackOutsideWebView }) => {
-	useEffect(() => {
-		const handleKeyDown = (event) => {
-			// Back 키 감지 (Backspace 또는 webOS Back 키)
-			if (event.key === 'Backspace' || event.keyCode === 8 || event.keyCode === 461) {
-				logger.debug('[useRemoteControl] Back 키 감지')
-
-				// WebView 포커스 여부에 따라 분기
-				if (isWebViewFocused) {
-					// WebView 포커스 시: 브라우저 뒤로 가기
-					if (onBackInWebView) {
-						onBackInWebView()
-						event.preventDefault()  // 기본 동작 방지 (페이지 뒤로 가기)
-					}
-				} else {
-					// NavigationBar 등 외부 포커스 시: Spotlight 포커스 이탈
-					if (onBackOutsideWebView) {
-						onBackOutsideWebView()
-						// 기본 동작 허용 (Spotlight 포커스 이동)
-					}
-				}
-			}
-		}
-
-		// 전역 keydown 이벤트 리스너 등록
-		window.addEventListener('keydown', handleKeyDown)
-
-		// cleanup
-		return () => {
-			window.removeEventListener('keydown', handleKeyDown)
-		}
-	}, [isWebViewFocused, onBackInWebView, onBackOutsideWebView])
-}
-
-export default useRemoteControl
-```
-
-### BrowserView에서 useRemoteControl 사용
-```javascript
-// src/views/BrowserView.js
-import useRemoteControl from '../hooks/useRemoteControl'
-import Spotlight from '@enact/spotlight'
-
-const BrowserView = () => {
-	const webviewRef = useRef(null)
-	const [isWebViewFocused, setIsWebViewFocused] = useState(true)
-
-	// Spotlight 포커스 변경 감지
-	useEffect(() => {
-		const handleSpotlightFocus = (event) => {
-			const focusedId = event.detail?.spotlightId
-			setIsWebViewFocused(focusedId === 'webview-main')
-		}
-
-		window.addEventListener('spotlightfocus', handleSpotlightFocus)
-
-		return () => {
-			window.removeEventListener('spotlightfocus', handleSpotlightFocus)
-		}
-	}, [])
-
-	// 리모컨 Back 키 처리
-	useRemoteControl({
-		isWebViewFocused,
-		onBackInWebView: () => {
-			// WebView 포커스 시: 브라우저 뒤로 가기
-			if (canGoBack && webviewRef.current) {
-				try {
-					webviewRef.current.contentWindow.history.back()
-					logger.info('[BrowserView] 리모컨 Back 키 → 브라우저 뒤로')
-				} catch (error) {
-					logger.error('[BrowserView] 브라우저 뒤로 실패:', error)
-				}
-			} else {
-				// 뒤로 갈 수 없을 때: 포커스를 NavigationBar로 이동
-				Spotlight.focus('navigation-bar')
-				logger.info('[BrowserView] 리모컨 Back 키 → NavigationBar 포커스')
-			}
-		},
-		onBackOutsideWebView: () => {
-			// NavigationBar 포커스 시: Spotlight 기본 동작 (포커스 이탈)
-			logger.info('[BrowserView] 리모컨 Back 키 → Spotlight 포커스 이탈')
-		}
-	})
-
-	// ... 기존 코드 ...
+#### setupConnections() - 시그널/슬롯 연결
+```cpp
+void NavigationBar::setupConnections() {
+    // 버튼 클릭 시그널 연결
+    connect(backButton_, &QPushButton::clicked, this, &NavigationBar::onBackClicked);
+    connect(forwardButton_, &QPushButton::clicked, this, &NavigationBar::onForwardClicked);
+    connect(reloadButton_, &QPushButton::clicked, this, &NavigationBar::onReloadClicked);
+    connect(homeButton_, &QPushButton::clicked, this, &NavigationBar::onHomeClicked);
 }
 ```
 
-## 9. 시퀀스 다이어그램
+#### applyStyles() - QSS 스타일시트
+```cpp
+void NavigationBar::applyStyles() {
+    // QSS 스타일 정의 (NFR-2: 리모컨 최적화 UX)
+    QString styleSheet = R"(
+        QPushButton {
+            min-width: 100px;
+            min-height: 80px;
+            font-size: 32pt;          /* 아이콘 크기 (유니코드) */
+            background-color: #333333; /* 어두운 배경 */
+            color: white;
+            border: 2px solid transparent;
+            border-radius: 8px;
+        }
+        QPushButton:hover {
+            background-color: #444444;
+        }
+        QPushButton:pressed {
+            background-color: #555555;
+        }
+        QPushButton:focus {
+            border: 2px solid white;  /* 포커스 테두리 (NFR-2) */
+        }
+        QPushButton:disabled {
+            opacity: 0.5;              /* 비활성 버튼 (결정 6) */
+            color: #888888;
+        }
+    )";
 
-### 시나리오 1: 뒤로 가기 버튼 클릭 (정상 동작)
-```
-사용자    NavigationBar    BrowserView    WebView (iframe)
-  │              │               │                │
-  │  리모컨 선택 │               │                │
-  │─────────────▶│               │                │
-  │              │  handleBack() │                │
-  │              │  canGoBack 확인│               │
-  │              │  (true)        │               │
-  │              │               │                │
-  │              │  webviewRef.contentWindow      │
-  │              │    .history.back()             │
-  │              │────────────────────────────────▶│
-  │              │               │                │  history.back()
-  │              │               │                │  이전 페이지 로드
-  │              │               │                │
-  │              │  onNavigate({ action: 'back' })│
-  │              │──────────────▶│                │
-  │              │               │  historyIndex--│
-  │              │               │  setCurrentUrl │
-  │              │               │                │
-  │              │               │  onNavigationChange({ url })
-  │              │               │◀───────────────│
-  │              │               │  setCanGoBack  │
-  │              │               │  setCanGoForward│
-  │              │               │                │
-  │              │◀ canGoBack    │                │
-  │              │   canGoForward│                │
-  │              │   Props 업데이트│              │
-  │              │  (버튼 상태 변경)              │
-```
-
-### 시나리오 2: 리모컨 Back 키 (WebView 포커스)
-```
-사용자    BrowserView    useRemoteControl    WebView (iframe)
-  │              │               │                │
-  │  리모컨      │               │                │
-  │  Back 키     │               │                │
-  │─────────────▶│               │                │
-  │              │  onKeyDown    │                │
-  │              │──────────────▶│                │
-  │              │               │  isWebViewFocused?
-  │              │               │  (true)         │
-  │              │               │                │
-  │              │               │  onBackInWebView()
-  │              │◀──────────────│                │
-  │              │  canGoBack 확인│               │
-  │              │  (true)        │               │
-  │              │  webviewRef.contentWindow      │
-  │              │    .history.back()             │
-  │              │────────────────────────────────▶│
-  │              │               │                │  history.back()
-  │              │               │                │  이전 페이지 로드
-```
-
-### 시나리오 3: 뒤로 가기 버튼 비활성화 (첫 페이지)
-```
-사용자    NavigationBar    BrowserView    WebView (iframe)
-  │              │               │                │
-  │  첫 페이지   │               │                │
-  │  (Google)    │               │                │
-  │              │               │  onNavigationChange
-  │              │               │◀───────────────│
-  │              │               │  { url, canGoBack: false }
-  │              │               │  setCanGoBack(false)
-  │              │               │                │
-  │              │◀ canGoBack    │                │
-  │              │   = false     │                │
-  │              │  Props 업데이트│              │
-  │              │  (뒤로 버튼 비활성화)          │
-  │              │  opacity: 0.5 │                │
-  │              │  disabled      │                │
-  │              │               │                │
-  │  리모컨 선택 │               │                │
-  │─────────────▶│               │                │
-  │              │  handleBack() │                │
-  │              │  canGoBack 확인│               │
-  │              │  (false) → return              │
-  │              │  (동작 안 함) │                │
-```
-
-### 시나리오 4: 홈 버튼 클릭
-```
-사용자    NavigationBar    BrowserView    WebView
-  │              │               │                │
-  │  리모컨 선택 │               │                │
-  │─────────────▶│               │                │
-  │              │  handleHome() │                │
-  │              │  onNavigate({ action: 'home',  │
-  │              │               url: homeUrl })  │
-  │              │──────────────▶│                │
-  │              │               │  setCurrentUrl(homeUrl)
-  │              │               │  setHistoryStack([homeUrl])
-  │              │               │  setHistoryIndex(0)
-  │              │               │                │
-  │              │               │  url Props 변경
-  │              │               │────────────────▶│
-  │              │               │                │  iframe.src 변경
-  │              │               │                │  Google 홈페이지 로드
-  │              │               │                │
-  │              │               │  onLoadEnd()   │
-  │              │               │◀───────────────│
-  │              │               │  onNavigationChange
-  │              │               │◀───────────────│
-  │              │               │  setCanGoBack(false)
-  │              │               │  setCanGoForward(false)
-  │              │               │                │
-  │              │◀ canGoBack    │                │
-  │              │   = false     │                │
-  │              │  (뒤로/앞으로 비활성화)        │
-```
-
-## 10. 에러 처리 설계
-
-### iframe history API 호출 실패
-```javascript
-// NavigationBar.js
-
-const handleBack = useCallback(() => {
-	if (!canGoBack || isNavigating) return
-
-	setIsNavigating(true)
-
-	try {
-		if (webviewRef.current && webviewRef.current.contentWindow) {
-			webviewRef.current.contentWindow.history.back()
-
-			if (onNavigate) {
-				onNavigate({ action: 'back' })
-			}
-
-			logger.info('[NavigationBar] 뒤로 가기 실행')
-		}
-	} catch (error) {
-		// CORS 에러 또는 보안 정책으로 history API 호출 실패
-		// 조용히 실패 (사용자에게 에러 표시 없음, 콘솔 로그만)
-		logger.error('[NavigationBar] 뒤로 가기 실패 (CORS 또는 보안 정책):', error)
-
-		// 에러 시에도 UI는 정상 유지 (버튼 상태 변경 없음)
-		// BrowserView의 히스토리 스택은 이미 업데이트되었으므로 되돌리지 않음
-	} finally {
-		setTimeout(() => setIsNavigating(false), 500)
-	}
-}, [canGoBack, isNavigating, webviewRef, onNavigate])
-```
-
-### CORS 환경에서 히스토리 상태 감지 실패
-```javascript
-// WebView.js
-
-useEffect(() => {
-	navigationIntervalRef.current = setInterval(() => {
-		try {
-			if (iframeRef.current && iframeRef.current.contentWindow) {
-				const newUrl = iframeRef.current.contentWindow.location.href
-
-				if (newUrl !== currentUrlRef.current) {
-					currentUrlRef.current = newUrl
-
-					// 히스토리 상태 전달
-					const historyState = {
-						url: newUrl,
-						canGoBack: true,   // CORS 환경에서는 항상 true (정확도 낮음)
-						canGoForward: false
-					}
-
-					if (onNavigationChange) {
-						onNavigationChange(historyState)
-					}
-
-					logger.info('[WebView] URL 변경 감지:', historyState)
-				}
-			}
-		} catch (error) {
-			// CORS 에러 시 무시 (Same-Origin Policy)
-			// 이 경우 NavigationBar 버튼은 항상 활성화 상태 유지
-			// 버튼 클릭 시 동작 실패해도 조용히 실패
-		}
-	}, 500)
-
-	return () => {
-		if (navigationIntervalRef.current) {
-			clearInterval(navigationIntervalRef.current)
-		}
-	}
-}, [onNavigationChange])
-```
-
-**대응 전략**: CORS 제약이 있는 외부 사이트에서는 히스토리 상태를 정확히 감지할 수 없으므로, NavigationBar 버튼을 항상 활성화하고, 버튼 클릭 시 동작 실패 시에도 에러 UI 표시 없이 조용히 실패합니다. 사용자는 버튼 클릭 후 페이지가 변경되지 않으면 현재 상태에서 해당 동작이 불가능함을 직관적으로 인지합니다.
-
-## 11. 스타일링 설계
-
-### NavigationBar 스타일
-```less
-// src/components/NavigationBar/NavigationBar.module.less
-
-.navigationBar {
-	display: flex;
-	justify-content: center;
-	align-items: center;
-	gap: 20px;  // 버튼 간격 20px (요구사항 NFR-2)
-	height: 100px;
-	padding: 0 var(--spacing-lg);
-	background-color: #2a2a2a;
-	border-top: 1px solid #444;
-}
-
-.navButton {
-	min-width: 100px;   // 최소 폭 100px (요구사항 NFR-2)
-	min-height: 80px;   // 최소 높이 80px (요구사항 NFR-2)
-	font-size: 16px;    // 폰트 크기 16px (요구사항 NFR-2)
-
-	// Moonstone Button은 기본적으로 포커스 스타일 제공
-	// 추가 커스터마이징 필요 시 아래 선택자 사용
-	&:global(.spottable):focus {
-		border: 2px solid white;  // 포커스 테두리 2px (요구사항 NFR-2)
-		outline: none;
-	}
-
-	// 비활성화 상태 (요구사항 NFR-3)
-	&:disabled {
-		opacity: 0.5;        // 비활성 버튼 흐릿하게
-		cursor: not-allowed;
-	}
-
-	// 클릭 애니메이션 (요구사항 NFR-3)
-	&:active {
-		transform: scale(0.95);
-		transition: transform 0.1s ease;
-	}
+    this->setStyleSheet(styleSheet);
 }
 ```
 
-### BrowserView 레이아웃 조정
-```less
-// src/views/BrowserView.module.less
-
-.browserView {
-	display: flex;
-	flex-direction: column;
-	height: 100vh;
-	width: 100vw;
-	background-color: var(--bg-color);
+#### setupFocusOrder() - 포커스 순서 설정
+```cpp
+void NavigationBar::setupFocusOrder() {
+    // Qt Focus Chain 설정 (FR-5: 좌→우 순서)
+    QWidget::setTabOrder(backButton_, forwardButton_);
+    QWidget::setTabOrder(forwardButton_, reloadButton_);
+    QWidget::setTabOrder(reloadButton_, homeButton_);
 }
-
-.urlBarPlaceholder {
-	height: 80px;
-	padding: var(--spacing-md);
-	background-color: #2a2a2a;
-	color: var(--text-color);
-	font-size: var(--font-size-min);
-	display: flex;
-	align-items: center;
-	gap: 10px;
-}
-
-.webviewWrapper {
-	flex: 1;  // 남은 공간 전체 차지
-	overflow: hidden;
-}
-
-// NavigationBar placeholder 삭제 (실제 컴포넌트로 대체)
-// .navBarPlaceholder는 삭제
 ```
 
-## 12. 기술적 주의사항
+#### setWebView() - WebView 연동
+```cpp
+void NavigationBar::setWebView(WebView *webView) {
+    // 기존 WebView 연결 해제
+    if (webView_) {
+        disconnect(webView_, nullptr, this, nullptr);
+    }
 
-### iframe history API의 제약사항
-- **Same-Origin Policy**: iframe의 contentWindow.history는 다른 도메인 페이지에서 접근 제한
-- **history.length**: 히스토리 항목 개수를 알 수 있지만, 현재 인덱스는 알 수 없음
-- **canGoForward 감지 불가**: 브라우저는 앞으로 갈 수 있는지 여부를 외부에서 직접 확인할 방법 없음
-- **대응**: BrowserView에서 히스토리 스택을 별도로 관리하여 canGoBack, canGoForward를 정확히 추적
+    webView_ = webView;
 
-### 리모컨 Back 키 코드
-- webOS 버전에 따라 Back 키 코드가 다를 수 있음 (Backspace: 8, webOS Back: 461)
-- **테스트 필수**: 실제 LG 프로젝터 HU175QW에서 Back 키 코드 확인
-- **대응**: useRemoteControl Hook에서 여러 키 코드를 모두 처리
+    // 새 WebView 시그널 연결 (FR-6: 버튼 상태 동기화)
+    if (webView_) {
+        connect(webView_, &WebView::urlChanged, this, &NavigationBar::updateButtonStates);
+        connect(webView_, &WebView::loadStarted, this, &NavigationBar::updateButtonStates);
+        connect(webView_, &WebView::loadFinished, this, &NavigationBar::updateButtonStates);
 
-### Enact Spotlight의 포커스 우선순위
-- Spotlight는 disabled 버튼에 포커스를 주지 않음 (자동 건너뜀)
-- 4개 버튼 중 일부가 비활성화되면 포커스 순서가 자동으로 조정됨
-- **주의**: 첫 페이지에서 뒤로 버튼이 비활성화되면, 앞으로 버튼으로 첫 포커스 이동
+        // 초기 상태 업데이트
+        updateButtonStates();
+    } else {
+        // WebView 없으면 모든 버튼 비활성
+        backButton_->setEnabled(false);
+        forwardButton_->setEnabled(false);
+        reloadButton_->setEnabled(false);  // 새로고침도 비활성 (WebView 없음)
+        homeButton_->setEnabled(false);    // 홈도 비활성 (WebView 없음)
+    }
+}
+```
 
-### 중복 클릭 방지
-- 네비게이션 동작(뒤로/앞으로/새로고침)은 페이지 로딩 시간이 소요됨
-- 연속 클릭 시 iframe이 여러 번 동작하여 의도하지 않은 결과 발생 가능
-- **대응**: isNavigating 플래그로 0.5초 동안 중복 클릭 차단
+#### updateButtonStates() - 버튼 상태 업데이트
+```cpp
+void NavigationBar::updateButtonStates() {
+    // nullptr 체크 (NFR-4: 신뢰성)
+    if (!webView_) {
+        backButton_->setEnabled(false);
+        forwardButton_->setEnabled(false);
+        return;
+    }
 
-### 메모리 누수 방지
-- useCallback의 의존성 배열에 state 포함 시 무한 재생성 가능
-- **대응**: 필요한 의존성만 포함, 불필요한 state는 ref로 대체
+    // WebView 히스토리 상태 조회 (FR-6: 버튼 상태 동기화)
+    bool canGoBack = webView_->canGoBack();
+    bool canGoForward = webView_->canGoForward();
 
-### CORS 환경에서의 사용자 경험
-- CORS로 히스토리 상태 감지 실패 시 버튼이 항상 활성화됨
-- 사용자가 클릭해도 동작하지 않을 수 있음 (첫 페이지에서 뒤로 버튼 등)
-- **대응**: 버튼 클릭 시 조용히 실패하여 앱이 중단되지 않도록 함. 사용자는 페이지가 변경되지 않으면 해당 동작이 불가능함을 직관적으로 인지
+    backButton_->setEnabled(canGoBack);
+    forwardButton_->setEnabled(canGoForward);
 
-## 13. 구현 순서
+    // 새로고침, 홈 버튼은 항상 활성 (FR-3, FR-4)
+    reloadButton_->setEnabled(true);
+    homeButton_->setEnabled(true);
+}
+```
 
-### Phase 1: NavigationBar 컴포넌트 기본 구조
-1. `src/components/NavigationBar/` 디렉토리 생성
-2. `NavigationBar.js` 생성 (Props 인터페이스, PropTypes 정의)
-3. `NavigationBar.module.less` 생성 (기본 스타일)
-4. `index.js` 생성 (export default)
+#### 버튼 클릭 핸들러
+```cpp
+void NavigationBar::onBackClicked() {
+    if (webView_ && webView_->canGoBack()) {
+        webView_->goBack();  // FR-1: 뒤로 가기
+        qDebug() << "[NavigationBar] Back button clicked, navigating to previous page";
+    }
+}
 
-### Phase 2: 버튼 UI 구현
-1. Enact Moonstone Button import
-2. 4개 버튼 배치 (뒤로, 앞으로, 새로고침, 홈)
-3. 버튼 아이콘 설정 (icon props)
-4. 버튼 레이아웃 스타일링 (Flexbox, gap)
-5. 비활성화 상태 스타일링 (disabled, opacity)
+void NavigationBar::onForwardClicked() {
+    if (webView_ && webView_->canGoForward()) {
+        webView_->goForward();  // FR-2: 앞으로 가기
+        qDebug() << "[NavigationBar] Forward button clicked, navigating to next page";
+    }
+}
 
-### Phase 3: 버튼 이벤트 핸들러 구현
-1. handleBack, handleForward, handleReload, handleHome 함수 작성
-2. webviewRef를 통해 iframe history API 호출
-3. onNavigate 콜백 호출
-4. isNavigating 플래그로 중복 클릭 방지
-5. try-catch로 에러 처리 (조용히 실패)
+void NavigationBar::onReloadClicked() {
+    if (webView_) {
+        webView_->reload();  // FR-3: 새로고침
+        qDebug() << "[NavigationBar] Reload button clicked";
+    }
+}
 
-### Phase 4: WebView ref 노출 (WebView 수정)
-1. WebView 컴포넌트를 forwardRef로 변환
-2. useImperativeHandle로 iframe ref 노출
-3. goBack, goForward, reload 편의 메서드 추가 (선택)
+void NavigationBar::onHomeClicked() {
+    if (webView_) {
+        webView_->load(DEFAULT_HOME_URL);  // FR-4: 홈페이지 로드
+        qDebug() << "[NavigationBar] Home button clicked, loading" << DEFAULT_HOME_URL;
+    }
+}
+```
 
-### Phase 5: BrowserView 통합
-1. webviewRef 생성 (useRef)
-2. WebView에 ref 전달
-3. canGoBack, canGoForward 상태 관리
-4. historyStack, historyIndex 상태 추가 (정확한 히스토리 추적)
-5. handleNavigate 함수 구현 (히스토리 스택 업데이트)
-6. NavigationBar 컴포넌트 import 및 사용
-7. Props 전달 (webviewRef, canGoBack, canGoForward, homeUrl, onNavigate)
+## 5. BrowserWindow 통합
 
-### Phase 6: Spotlight 통합
-1. NavigationBar에 spotlightId 설정
-2. BrowserView에서 Spotlight.set으로 포커스 흐름 정의
-3. WebView ↔ NavigationBar 간 포커스 전환 테스트 (위/아래 방향키)
-4. 버튼 간 포커스 이동 테스트 (좌/우 방향키)
+### BrowserWindow.h 수정
+```cpp
+// Forward declaration 추가
+class NavigationBar;
 
-### Phase 7: 리모컨 Back 키 처리
-1. useRemoteControl Hook 생성 (src/hooks/)
-2. BrowserView에서 isWebViewFocused 상태 관리
-3. useRemoteControl 사용 (onBackInWebView, onBackOutsideWebView)
-4. Back 키 이벤트 핸들러 구현 (webviewRef.contentWindow.history.back())
+// 멤버 변수 추가
+private:
+    NavigationBar *navBar_;  ///< 네비게이션 바
+```
 
-### Phase 8: 히스토리 상태 동기화
-1. WebView의 onNavigationChange 콜백에 canGoBack, canGoForward 추가 (CORS 제약 고려)
-2. BrowserView에서 히스토리 스택 관리 로직 구현
-3. NavigationBar에 정확한 canGoBack, canGoForward Props 전달
-4. 버튼 활성/비활성 상태 자동 업데이트 확인
+### BrowserWindow.cpp 수정
 
-### Phase 9: 로컬 테스트
-1. `npm run serve` 실행
-2. Google 홈페이지 로드 → 뒤로 버튼 비활성화 확인
-3. 검색 후 페이지 이동 → 뒤로 버튼 활성화 확인
-4. 뒤로 버튼 클릭 → 이전 페이지 복귀 확인
-5. 앞으로 버튼 활성화 확인
-6. 새로고침 버튼 클릭 → 페이지 재로드 확인
-7. 홈 버튼 클릭 → Google 홈페이지 복귀 확인
-8. 키보드 방향키로 버튼 포커스 이동 확인 (탭 키로 로컬 테스트)
+#### setupUI() - NavigationBar 추가
+```cpp
+void BrowserWindow::setupUI() {
+    centralWidget_ = new QWidget(this);
+    mainLayout_ = new QVBoxLayout(centralWidget_);
 
-### Phase 10: 실제 디바이스 테스트
-1. `npm run pack-p` 빌드
-2. `ares-package dist/` IPK 생성
-3. 프로젝터 설치 및 실행
-4. 리모컨 방향키로 버튼 포커스 이동 확인
-5. 리모컨 선택 버튼으로 버튼 클릭 확인
-6. 리모컨 Back 키 동작 확인 (WebView 포커스 시 브라우저 뒤로)
-7. 주요 사이트(YouTube, Naver, Google)에서 뒤로/앞으로 동작 확인
-8. 3m 거리에서 버튼 아이콘 명확히 인식 가능한지 확인
+    // URLBar는 F-03에서 추가 예정
 
-## 14. 확장성 고려사항
+    // NavigationBar 생성 및 추가
+    navBar_ = new NavigationBar(this);
+    mainLayout_->addWidget(navBar_);
 
-### F-06(탭 관리)와의 연동
-- **현재**: 단일 WebView 인스턴스 제어
-- **F-06 시**: 활성 탭의 WebView만 제어하도록 변경
-- **준비**:
-  - NavigationBar는 webviewRef Props로 받으므로, BrowserView가 활성 탭의 ref를 전달하도록 수정하면 됨
-  - 탭별 히스토리 스택 관리 (historyStack을 탭 ID별로 분리)
+    // WebView 생성
+    webView_ = new WebView(this);
+    mainLayout_->addWidget(webView_, 1);  // stretch factor 1 (주요 영역)
 
-### F-08(히스토리 관리)와의 연동
-- **현재**: BrowserView가 히스토리 스택을 메모리에서만 관리
-- **F-08 시**: 히스토리 스택을 LS2 API로 영구 저장
-- **준비**:
-  - handleNavigationChange에서 historyService.addHistory(url) 호출 추가
-  - 앱 재시작 시 LS2에서 히스토리 불러와 스택 복원
+    // StatusLabel
+    statusLabel_ = new QLabel("Ready", this);
+    mainLayout_->addWidget(statusLabel_);
 
-### F-11(설정 화면)과의 연동
-- **현재**: 홈페이지 URL이 하드코딩 (https://www.google.com)
-- **F-11 시**: settingsService.getHomeUrl()로 설정 읽기
-- **준비**:
-  - BrowserView에서 homeUrl을 state로 관리
-  - useEffect로 앱 시작 시 settingsService에서 homeUrl 불러오기
-  - NavigationBar에 Props 전달
+    setCentralWidget(centralWidget_);
+}
+```
 
-### F-12(리모컨 단축키)와의 연동
-- **현재**: Back 키만 처리
-- **F-12 시**: 채널 버튼, 컬러 버튼으로 뒤로/앞으로/새로고침 매핑
-- **준비**:
-  - useRemoteControl Hook에 onChannelUp, onColorRed 등 콜백 추가
-  - BrowserView에서 단축키 설정 읽어와 매핑
+#### setupConnections() - NavigationBar ↔ WebView 연결
+```cpp
+void BrowserWindow::setupConnections() {
+    // NavigationBar에 WebView 설정
+    navBar_->setWebView(webView_);
+
+    // WebView 시그널 → StatusLabel 업데이트 (기존 코드 유지)
+    connect(webView_, &WebView::urlChanged, this, [this](const QUrl &url) {
+        statusLabel_->setText(url.toString());
+    });
+}
+```
+
+#### keyPressEvent() - 리모컨 Back 키 처리 (FR-7)
+```cpp
+void BrowserWindow::keyPressEvent(QKeyEvent *event) {
+    // 리모컨 Back 키 처리 (결정 5)
+    if (event->key() == Qt::Key_Backspace || event->key() == Qt::Key_Escape) {
+        // WebView에 포커스가 있을 때만 브라우저 뒤로 가기
+        if (webView_->hasFocus() && webView_->canGoBack()) {
+            webView_->goBack();
+            qDebug() << "[BrowserWindow] Remote Back key pressed, navigating back";
+            event->accept();
+            return;
+        } else {
+            // NavigationBar나 URLBar에 포커스가 있을 때는 포커스 이탈
+            event->ignore();
+        }
+    }
+
+    // 기본 키 이벤트 처리 (Qt Focus Chain)
+    QMainWindow::keyPressEvent(event);
+}
+```
+
+## 6. 시퀀스 흐름
+
+### 주요 시나리오: 뒤로 버튼 클릭
+```
+사용자 → 리모컨 → BrowserWindow → NavigationBar → WebView
+  │      좌/우키      │                 │              │
+  │  ───────────────▶ │                 │              │
+  │                    │   Focus Chain   │              │
+  │                    │  ─────────────▶ │              │
+  │                    │                 │  (버튼 포커스)
+  │      선택 키       │                 │              │
+  │  ───────────────▶ │                 │              │
+  │                    │                 │  clicked()   │
+  │                    │                 │  ──────────▶ │
+  │                    │                 │  onBackClicked()
+  │                    │                 │  canGoBack()?
+  │                    │                 │  ───────────▶
+  │                    │                 │              │ true
+  │                    │                 │              │ goBack()
+  │                    │                 │              │ ────────▶
+  │                    │                 │              │ (히스토리 스택 pop)
+  │                    │                 │  urlChanged()│
+  │                    │                 │ ◀────────────│
+  │                    │  updateButtonStates()         │
+  │                    │                 │ ────────────▶│
+  │                    │                 │  canGoForward() = true
+  │                    │                 │  setEnabled(true) on Forward
+  │                    │                 │  (UI 업데이트)
+```
+
+### 시나리오: WebView URL 변경 → 버튼 상태 동기화
+```
+WebView → NavigationBar
+  │            │
+  │ urlChanged(QUrl)
+  │ ──────────▶│
+  │            │ updateButtonStates()
+  │            │ ────────────────────▶
+  │            │ canGoBack() 호출
+  │ canGoBack()│
+  │◀───────────│
+  │ true/false │
+  │───────────▶│
+  │            │ setEnabled(bool) on Back Button
+  │            │
+  │            │ canGoForward() 호출
+  │canGoForward()
+  │◀───────────│
+  │ true/false │
+  │───────────▶│
+  │            │ setEnabled(bool) on Forward Button
+  │            │ (UI 즉시 업데이트)
+```
+
+### 에러 시나리오: WebView nullptr
+```
+NavigationBar::onBackClicked()
+  │
+  │ if (!webView_) → 조용히 리턴 (NFR-4)
+  │ qDebug() << "WebView is null, ignoring click"
+  │
+  └─ (버튼 클릭 무시, 에러 메시지 없음)
+```
+
+### 시나리오: 리모컨 Back 키 → 브라우저 뒤로 가기
+```
+사용자 → BrowserWindow → WebView
+  │ Back 키       │           │
+  │ ────────────▶ │           │
+  │               │ keyPressEvent(Key_Backspace)
+  │               │ webView_->hasFocus()?
+  │               │ ──────────▶
+  │               │           │ true
+  │               │ canGoBack()?
+  │               │ ──────────▶
+  │               │           │ true
+  │               │ goBack()  │
+  │               │ ──────────▶
+  │               │           │ (히스토리 스택 pop)
+  │               │ event->accept()
+  │               │ (이벤트 소비, 앱 종료 방지)
+```
+
+## 7. 영향 범위 분석
+
+### 수정 필요한 기존 파일
+| 파일 경로 | 변경 내용 | 이유 |
+|----------|----------|------|
+| `src/browser/BrowserWindow.h` | - Forward declaration 추가: `class NavigationBar;`<br>- 멤버 변수 추가: `NavigationBar *navBar_;`<br>- keyPressEvent() 메서드 선언 추가 | NavigationBar 통합 |
+| `src/browser/BrowserWindow.cpp` | - #include "ui/NavigationBar.h" 추가<br>- setupUI()에서 navBar_ 생성 및 레이아웃 추가<br>- setupConnections()에서 navBar_->setWebView() 호출<br>- keyPressEvent() 구현 (리모컨 Back 키) | NavigationBar 인스턴스 생성 및 연결 |
+
+### 새로 생성할 파일
+| 파일 경로 | 역할 | 크기 |
+|----------|------|------|
+| `src/ui/NavigationBar.cpp` | NavigationBar 클래스 구현 | ~300줄 |
+| (NavigationBar.h는 이미 스켈레톤 존재) | 확장 필요 | 기존 파일 수정 |
+
+### 영향 받는 기존 기능
+| 기능명 | 영향 내용 | 대응 방안 |
+|-------|----------|----------|
+| F-02 (WebView 통합) | NavigationBar가 WebView의 시그널 구독 | 이미 구현된 시그널 활용, WebView 수정 불필요 |
+| F-03 (URL 입력 UI) | BrowserWindow 레이아웃에 URLBar 추가 시 순서 고려 | URLBar → NavigationBar → WebView 순서로 배치 |
+| F-06 (탭 관리) | 탭 전환 시 NavigationBar의 WebView 포인터 업데이트 | setWebView() 메서드 재호출로 대응 |
+
+## 8. 기술적 주의사항
+
+### 메모리 안전성
+- **WebView 포인터**: NavigationBar는 WebView를 **약한 참조**(weak reference)로 관리
+  - NavigationBar가 WebView를 소유하지 않음 (BrowserWindow가 소유)
+  - WebView 소멸 시 NavigationBar는 nullptr 체크 필요
+  - BrowserWindow 소멸 시 Qt parent-child 메커니즘으로 자동 정리
+
+### 시그널/슬롯 연결 해제
+- `setWebView(nullptr)` 호출 시 이전 WebView의 시그널 연결 해제 필수
+  - 메모리 누수 방지 (WebView 소멸 시 댕글링 포인터)
+  - `disconnect(webView_, nullptr, this, nullptr)` 사용
+
+### 리모컨 Back 키 동작
+- **WebView 포커스 시**: 브라우저 뒤로 가기 (goBack())
+- **NavigationBar 포커스 시**: event->ignore()로 포커스 이탈
+- **첫 페이지에서 Back 키**: canGoBack() == false → 이벤트 무시 (앱 종료 안 함)
+  - F-15(즐겨찾기 홈 화면) 구현 시 홈 화면으로 이동하도록 변경 가능
+
+### Qt 시그널/슬롯 성능
+- WebView의 urlChanged() 시그널은 동기 호출 (Qt 기본)
+  - updateButtonStates()는 즉시 실행 (0.1초 이내, NFR-1)
+  - 버튼 상태 업데이트는 UI 스레드에서 처리 (Qt 이벤트 루프)
+
+### 포커스 정책
+- `Qt::StrongFocus`: 탭 키와 클릭 모두로 포커스 가능
+- `setTabOrder()`: 명시적 포커스 순서 설정 (좌→우)
+- **주의**: BrowserWindow::setupUI()에서 URLBar, NavigationBar, WebView 간 전체 포커스 체인 설정 필요
+
+### QSS 스타일 우선순위
+- 인라인 스타일 > 위젯 스타일시트 > 부모 스타일시트 > 앱 전역 스타일
+- NavigationBar::applyStyles()는 버튼에 개별 스타일시트 설정
+- BrowserWindow에서 전역 스타일 설정 시 우선순위 고려
+
+## 9. 테스트 계획
+
+### 단위 테스트 (Google Test + Qt Test)
+```cpp
+// tests/unit/NavigationBarTest.cpp
+
+TEST_F(NavigationBarTest, InitialState) {
+    NavigationBar navBar;
+    // WebView 설정 전: 모든 버튼 비활성
+    EXPECT_FALSE(navBar.backButton()->isEnabled());
+    EXPECT_FALSE(navBar.forwardButton()->isEnabled());
+}
+
+TEST_F(NavigationBarTest, UpdateButtonStates) {
+    NavigationBar navBar;
+    MockWebView webView;
+
+    EXPECT_CALL(webView, canGoBack()).WillOnce(Return(true));
+    EXPECT_CALL(webView, canGoForward()).WillOnce(Return(false));
+
+    navBar.setWebView(&webView);
+    navBar.updateButtonStates();
+
+    EXPECT_TRUE(navBar.backButton()->isEnabled());
+    EXPECT_FALSE(navBar.forwardButton()->isEnabled());
+}
+
+TEST_F(NavigationBarTest, BackButtonClick) {
+    NavigationBar navBar;
+    MockWebView webView;
+
+    EXPECT_CALL(webView, canGoBack()).WillOnce(Return(true));
+    EXPECT_CALL(webView, goBack()).Times(1);
+
+    navBar.setWebView(&webView);
+    QTest::mouseClick(navBar.backButton(), Qt::LeftButton);
+}
+
+TEST_F(NavigationBarTest, NullWebViewSafety) {
+    NavigationBar navBar;
+    navBar.setWebView(nullptr);
+
+    // 클릭 시 크래시 없이 조용히 무시
+    EXPECT_NO_THROW(QTest::mouseClick(navBar.backButton(), Qt::LeftButton));
+}
+```
+
+### 통합 테스트 (Qt Test)
+```cpp
+// tests/integration/BrowserWindowTest.cpp
+
+TEST_F(BrowserWindowTest, NavigationBarIntegration) {
+    BrowserWindow window;
+    window.show();
+
+    // 초기 로드
+    window.loadUrl("https://example.com");
+    QTest::qWait(2000);  // 로딩 대기
+
+    // 뒤로 버튼 비활성 확인
+    EXPECT_FALSE(window.navBar()->backButton()->isEnabled());
+
+    // 링크 클릭 시뮬레이션
+    window.webView()->load("https://example.com/page2");
+    QTest::qWait(2000);
+
+    // 뒤로 버튼 활성 확인
+    EXPECT_TRUE(window.navBar()->backButton()->isEnabled());
+
+    // 뒤로 버튼 클릭
+    QTest::mouseClick(window.navBar()->backButton(), Qt::LeftButton);
+    QTest::qWait(2000);
+
+    // URL 확인
+    EXPECT_EQ(window.webView()->url().toString(), "https://example.com");
+}
+
+TEST_F(BrowserWindowTest, RemoteBackKeyHandling) {
+    BrowserWindow window;
+    window.show();
+
+    window.loadUrl("https://example.com");
+    QTest::qWait(2000);
+    window.webView()->load("https://example.com/page2");
+    QTest::qWait(2000);
+
+    // WebView에 포커스
+    window.webView()->setFocus();
+
+    // 리모컨 Back 키 시뮬레이션
+    QTest::keyPress(&window, Qt::Key_Backspace);
+    QTest::qWait(2000);
+
+    // URL 확인
+    EXPECT_EQ(window.webView()->url().toString(), "https://example.com");
+}
+```
+
+### 수동 테스트 (LG 프로젝터 HU715QW)
+| 테스트 케이스 | 절차 | 예상 결과 |
+|-------------|------|----------|
+| TC-1: 뒤로 버튼 동작 | 1. Google 로드<br>2. "YouTube" 검색<br>3. 뒤로 버튼 클릭 | Google 홈페이지로 복귀, 앞으로 버튼 활성화 |
+| TC-2: 리모컨 포커스 이동 | 1. 리모컨 좌/우 방향키<br>2. 각 버튼 포커스 확인 | 흰색 테두리 표시, 순서대로 이동 |
+| TC-3: 새로고침 동작 | 1. YouTube 로드<br>2. 새로고침 버튼 클릭 | 페이지 재로드, 로딩 인디케이터 표시 (F-05) |
+| TC-4: 홈 버튼 동작 | 1. 임의 사이트 로드<br>2. 홈 버튼 클릭 | Google 홈페이지로 이동 |
+| TC-5: 리모컨 Back 키 | 1. 여러 페이지 탐색<br>2. WebView 포커스<br>3. Back 키 | 브라우저 뒤로 가기 |
+| TC-6: 비활성 버튼 스타일 | 1. 첫 페이지에서 뒤로 버튼 확인 | opacity 0.5, 클릭 안 됨 |
+
+## 10. 성능 고려사항
+
+### 메모리 사용
+- NavigationBar: 4개 QPushButton + 1개 QHBoxLayout = 약 10KB
+- QSS 스타일시트: 약 1KB (메모리 캐시)
+- **총합**: 50KB 이하 (NFR-1 만족)
+
+### 응답 시간
+- 버튼 클릭 → WebView API 호출: Qt 시그널/슬롯 = 약 0.01ms
+- WebView::goBack() → 페이지 로드 시작: Qt WebEngineView = 약 50-100ms
+- **총합**: 0.3초 이내 (NFR-1 만족)
+
+### UI 업데이트
+- WebView::urlChanged() → updateButtonStates(): 동기 호출 = 약 0.1ms
+- QPushButton::setEnabled(): Qt 이벤트 루프 = 약 1ms
+- **총합**: 0.1초 이내 (NFR-1 만족)
+
+## 11. 향후 확장 계획
+
+### F-11 (설정 화면) 연동
+```cpp
+// NavigationBar.cpp
+void NavigationBar::onHomeClicked() {
+    QString homeUrl = settingsService_->getHomePage();  // SettingsService 주입
+    webView_->load(homeUrl);
+}
+```
+
+### F-15 (즐겨찾기 홈 화면) 연동
+- 첫 페이지에서 리모컨 Back 키 → 즐겨찾기 홈 화면 표시
+- BrowserWindow::keyPressEvent()에서 분기 처리
+
+### 아이콘 교체 (프로덕션)
+```cpp
+backButton_->setIcon(QIcon(":/icons/back.svg"));
+backButton_->setIconSize(QSize(32, 32));
+```
+
+### 버튼 애니메이션 (선택 사항)
+```cpp
+// 클릭 시 버튼 회전 효과 (Qt Property Animation)
+QPropertyAnimation *anim = new QPropertyAnimation(reloadButton_, "rotation");
+anim->setDuration(300);
+anim->setStartValue(0);
+anim->setEndValue(360);
+anim->start(QAbstractAnimation::DeleteWhenStopped);
+```
 
 ## 변경 이력
 
 | 날짜 | 변경 내용 | 이유 |
 |------|-----------|------|
-| 2026-02-12 | 최초 작성 | F-04 요구사항 기반 기술 설계 |
+| 2026-02-14 | 최초 작성 (Native App 기반) | F-04 기능 설계, Web App에서 Native App으로 전환 |
+| 2026-02-14 | 유니코드 아이콘 사용 결정 (결정 7) | 초기 구현 단순화, 향후 SVG 마이그레이션 계획 |
+| 2026-02-14 | 홈페이지 URL 하드코딩 결정 (결정 4) | F-11 의존성 제거, SettingsService 없이 구현 가능 |

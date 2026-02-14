@@ -1,991 +1,1040 @@
 # 로딩 인디케이터 — 기술 설계서
 
 ## 1. 참조
-- 요구사항 분석서: `docs/specs/loading-indicator/requirements.md`
-- WebView 설계서: `docs/specs/webview-integration/design.md`
-- PRD: `docs/project/prd.md`
-- CLAUDE.md: `/Users/jsong/dev/jsong1230-github/webosbrowser/CLAUDE.md`
+- 요구사항 분석서: docs/specs/loading-indicator/requirements.md
+- WebView 헤더: src/browser/WebView.h
+- BrowserWindow 헤더: src/browser/BrowserWindow.h
+- PRD: docs/project/prd.md
 
 ## 2. 아키텍처 개요
 
 ### 전체 구조
-WebView 컴포넌트의 로딩 상태(onLoadStart, onLoadEnd, onLoadError)를 기반으로 시각적 피드백을 제공하는 LoadingBar 컴포넌트를 구현합니다. iframe의 실제 로딩 진행률을 알 수 없으므로 시간 기반 가상 진행률 알고리즘을 적용합니다.
+웹 페이지 로딩 중 시각적 피드백을 제공하는 Qt Widgets 기반 UI 컴포넌트입니다. QWebEngineView의 실제 로딩 진행률(0~100%)을 QProgressBar로 표시하고, 화면 중앙에 스피너 애니메이션을 오버레이로 표시합니다.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      BrowserView                         │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │                   URLBar (F-03)                     │ │
-│  └────────────────────────────────────────────────────┘ │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │              LoadingBar (F-05)                      │ │
-│  │  ┌──────────────────────────────────────────────┐  │ │
-│  │  │   [========>        ] 65%                    │  │ │
-│  │  └──────────────────────────────────────────────┘  │ │
-│  └────────────────────────────────────────────────────┘ │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │                  WebView Component                  │ │
-│  │  ┌──────────────────────────────────────────────┐  │ │
-│  │  │           <iframe> (웹 콘텐츠)                │  │ │
-│  │  └──────────────────────────────────────────────┘  │ │
-│  │  [ 로딩 스피너 오버레이 (중앙) ]                   │ │
-│  └────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────┘
+BrowserWindow
+┌────────────────────────────────────────────────┐
+│ ┌────────────────────────────────────────────┐ │
+│ │  LoadingIndicator (상단 프로그레스바)      │ │  ← QProgressBar (화면 상단)
+│ │  ████████████░░░░░░░░░░░░░░░░░░░░░  75%    │ │
+│ └────────────────────────────────────────────┘ │
+│                                                  │
+│   WebView                                       │
+│   ┌────────────────────────────────────────┐   │
+│   │         [로딩 스피너 오버레이]          │   │  ← QLabel + QMovie (중앙)
+│   │              ⟳ (회전)                   │   │
+│   │         "페이지 로딩 중..."             │   │  ← QLabel (텍스트)
+│   │                                          │   │
+│   │         www.youtube.com                 │   │  ← QLabel (URL, 선택적)
+│   └────────────────────────────────────────┘   │
+│                                                  │
+│   [statusBar: "로딩 중... 75%"]                 │  ← 기존 상태바 연동
+└────────────────────────────────────────────────┘
+
+에러 시 (1초간 표시)
+┌────────────────────────────────────────────────┐
+│ ┌────────────────────────────────────────────┐ │
+│ │  ████████████████████████████████  (빨간색) │ │  ← 프로그레스바 빨간색
+│ └────────────────────────────────────────────┘ │
+│   ┌────────────────────────────────────────┐   │
+│   │              ⚠️                          │   │  ← 에러 아이콘
+│   │         "페이지 로딩 실패"              │   │
+│   └────────────────────────────────────────┘   │
+└────────────────────────────────────────────────┘
 ```
 
 ### 핵심 설계 원칙
-1. **가상 진행률 기반**: iframe은 실제 진행률을 제공하지 않으므로 시간 기반 가상 진행률 계산
-2. **이벤트 기반 동기화**: WebView의 onLoadStart, onLoadEnd, onLoadError 이벤트로 상태 동기화
-3. **성능 최적화**: CSS transform, opacity만 사용하여 GPU 가속 애니메이션 구현
-4. **Enact UI 통합**: Moonstone Spinner 활용, 프로그레스바는 커스텀 구현 (Moonstone ProgressBar는 정적 진행률용)
-5. **원거리 가독성**: 최소 8px 높이의 프로그레스바, 80px 크기의 스피너
+1. **Qt 표준 위젯 활용**: QProgressBar, QLabel, QMovie 등 Qt 기본 위젯 우선 사용
+2. **실제 진행률 표시**: QWebEngineView의 loadProgress(int) 시그널 기반
+3. **오버레이 방식**: WebView 위에 z-order 높게 배치 (QStackedWidget 또는 raise())
+4. **하드웨어 가속**: Qt OpenGL 기반 애니메이션 (webOS 최적화)
+5. **시그널/슬롯 기반 통신**: WebView와 느슨한 결합
 
 ## 3. 아키텍처 결정
 
-### 결정 1: 프로그레스바 구현 방식
+### 결정 1: 프로그레스바 위치 및 스타일
 - **선택지**:
-  - A) Enact `@enact/moonstone/ProgressBar` 사용
-  - B) 커스텀 HTML + CSS 애니메이션 구현
-  - C) Canvas API로 그래픽 렌더링
-- **결정**: B) 커스텀 HTML + CSS 애니메이션
+  - A) BrowserWindow 상단 (QMainWindow::addToolBar에 추가)
+  - B) WebView 내부 상단 (WebView 자식 위젯)
+  - C) BrowserWindow 레이아웃에 별도 위젯으로 추가
+- **결정**: C) BrowserWindow 레이아웃에 별도 위젯
 - **근거**:
-  - Enact ProgressBar는 정적 진행률 표시용으로, 부드러운 가상 진행률 애니메이션에 부적합
-  - CSS transform (scaleX)로 GPU 가속 애니메이션 구현 가능 (성능 우수)
-  - Canvas는 오버헤드가 크고 webOS 프로젝터 환경에서 성능 저하 우려
-  - 커스텀 구현으로 Ease-out 곡선, 페이드아웃 등 세밀한 제어 가능
-- **트레이드오프**: Enact 테마 자동 적용 불가 → CSS Variables로 테마 색상 직접 사용
+  - BrowserWindow::mainLayout_에 QProgressBar 추가 (WebView 위에 배치)
+  - QVBoxLayout 순서: QProgressBar → WebView → statusBar
+  - 독립적인 위젯으로 재사용 가능 (향후 탭별 로딩 인디케이터)
+  - QMainWindow::addToolBar는 툴바 스타일로 표시되어 프로그레스바에 부적합
+- **트레이드오프**: BrowserWindow.cpp 수정 필요 (레이아웃 재구성)
 
-### 결정 2: 스피너 구현 방식
+### 결정 2: 스피너 애니메이션 방식
 - **선택지**:
-  - A) Enact `@enact/moonstone/Spinner` 사용
-  - B) 커스텀 CSS 회전 애니메이션
-  - C) GIF/SVG 애니메이션 파일
-- **결정**: A) Enact `@enact/moonstone/Spinner`
+  - A) QLabel + QMovie (GIF 애니메이션 파일)
+  - B) QProgressBar (BusyIndicator 스타일, QSS로 무한 회전)
+  - C) QPainter + QTimer (커스텀 회전 애니메이션 직접 그리기)
+  - D) QML Loader + BusyIndicator (QML 컴포넌트 사용)
+- **결정**: A) QLabel + QMovie (GIF 애니메이션 파일)
 - **근거**:
-  - Enact Spinner는 부드러운 회전 애니메이션을 제공하며 성능 검증됨
-  - Moonstone 테마와 일관성 유지 (다크/라이트 모드 자동 적용)
-  - 크기 조정 가능 (`size` prop 제공)
-  - 커스텀 구현은 브라우저 호환성, 성능 테스트 부담
-- **트레이드오프**: Enact 의존성 증가 (이미 프로젝트에 포함되어 있으므로 추가 부담 없음)
+  - 가장 간단하고 안정적인 방법 (Qt 표준 기능)
+  - GIF 파일은 디자이너가 커스터마이징 가능 (스피너 스타일 변경 용이)
+  - QMovie는 하드웨어 가속 지원 (OpenGL 렌더링)
+  - QPainter는 구현 복잡도 높고 성능 최적화 필요
+  - QML은 Qt Widgets와 혼용 시 추가 의존성
+- **트레이드오프**: GIF 파일 리소스 추가 필요 (resources/icons/spinner.gif)
 
-### 결정 3: 가상 진행률 알고리즘
+### 결정 3: 오버레이 배치 방식
 - **선택지**:
-  - A) 선형 증가 (0% → 100%, 일정 속도)
-  - B) 단계별 증가 (0→60% 빠름, 60→90% 느림, 90→95% 매우 느림)
-  - C) 지수 함수 기반 Ease-out 곡선
-- **결정**: B) 단계별 증가 + C) Ease-out 애니메이션 조합
+  - A) QStackedWidget (BrowserWindow에서 WebView와 LoadingOverlay 관리)
+  - B) WebView 자식 위젯으로 추가 (WebView::addChild)
+  - C) LoadingIndicator를 독립 QWidget으로 만들고 QWidget::raise() 사용
+- **결정**: C) LoadingIndicator를 독립 QWidget, raise() 사용
 - **근거**:
-  - **체감 속도 개선**: 초반 빠른 증가로 사용자에게 "로딩이 진행 중"임을 즉시 인지
-  - **실제 로딩 대기**: 중반부터 느려져 실제 네트워크 로딩 완료를 대기
-  - **무한 대기 방지**: 90% 이상에서 매우 느리게 증가하여 100%에 도달하지 않음 (실제 완료 이벤트 대기)
-  - **자연스러운 전환**: CSS Ease-out 곡선으로 부드러운 애니메이션
-- **알고리즘**:
-  - 0~3초: 0% → 60% (20%/초 속도)
-  - 3~10초: 60% → 90% (4.3%/초 속도)
-  - 10초~완료: 90% → 95% (0.5%/초 속도)
-  - 완료 이벤트 수신 시: 현재 진행률 → 100% (즉시 이동 후 페이드아웃)
+  - 가장 단순한 방법 (QStackedWidget은 전체 화면 전환용)
+  - WebView 내부에 추가하면 WebView가 LoadingIndicator를 관리해야 함 (결합도 증가)
+  - raise()는 z-order만 조정하여 오버레이 효과 제공
+  - 페이드인/아웃 시 show()/hide() 호출만으로 제어 가능
+- **트레이드오프**: 레이아웃 관리가 약간 복잡해짐 (수동으로 위치 조정)
 
-### 결정 4: 애니메이션 프레임워크
+### 결정 4: 로딩 진행률 업데이트 빈도
 - **선택지**:
-  - A) setInterval로 진행률 업데이트
-  - B) requestAnimationFrame으로 진행률 업데이트
-  - C) CSS keyframes 애니메이션만 사용 (JavaScript 없음)
-- **결정**: B) requestAnimationFrame
+  - A) WebView의 loadProgress(int) 시그널을 그대로 반영 (무제한)
+  - B) QTimer로 100ms마다 업데이트 (10fps)
+  - C) 진행률 변화가 5% 이상일 때만 업데이트
+- **결정**: B) QTimer로 100ms마다 업데이트 (10fps)
 - **근거**:
-  - requestAnimationFrame은 브라우저 리페인트에 동기화되어 부드러운 60fps 애니메이션 보장
-  - setInterval은 백그라운드 탭에서 throttle되어 애니메이션 끊김 가능
-  - CSS keyframes만으로는 동적 완료 시점 처리 불가 (로딩 완료 이벤트 대응 필요)
-  - webOS Chromium 53+에서 requestAnimationFrame 지원 확인됨
-- **트레이드오프**: 약간의 복잡도 증가 (타이머 관리, cleanup 필요)
+  - QWebEngineView는 loadProgress 시그널을 매우 빈번하게 emit (50fps 이상)
+  - 과도한 repaint는 CPU 사용률 증가 및 UI 버벅임 유발
+  - 사람 눈은 10fps 이상이면 부드럽게 인지 (프로그레스바는 30fps 불필요)
+  - QTimer 쓰로틀링으로 성능과 부드러움 균형
+- **구현**: LoadingIndicator 내부에 QTimer (100ms interval) + 진행률 캐싱
+- **트레이드오프**: 진행률 업데이트가 최대 100ms 지연 (무시할 수 있는 수준)
 
-### 결정 5: 로딩 오버레이 구조
+### 결정 5: 로딩 타임아웃 처리
 - **선택지**:
-  - A) WebView 내부에 오버레이 통합 (현재 구조 유지)
-  - B) LoadingBar를 독립 컴포넌트로 분리 → BrowserView에서 별도 렌더링
-  - C) 전역 Portal로 오버레이 렌더링
-- **결정**: A) WebView 내부 통합 + B) LoadingBar 독립 컴포넌트 추가
+  - A) WebView 내부에서 QTimer(30초) 관리, loadTimeout() 시그널 emit
+  - B) LoadingIndicator에서 QTimer(30초) 관리, 30초 후 경고 표시
+  - C) BrowserWindow에서 타임아웃 관리, LoadingIndicator는 UI만 담당
+- **결정**: A) WebView 내부에서 타임아웃 관리
 - **근거**:
-  - **WebView 내부 스피너**: 웹 콘텐츠 중앙에 오버레이되어야 하므로 WebView 내부가 적합
-  - **독립 LoadingBar**: 화면 상단에 고정되는 프로그레스바는 BrowserView 레벨에서 관리 (URLBar 아래 배치)
-  - **관심사 분리**: LoadingBar는 재사용 가능한 독립 컴포넌트로 설계 (향후 F-06 탭 관리에서 탭별 로딩 표시 재사용)
-- **구조**:
-  ```
-  BrowserView
-  ├── URLBar (F-03)
-  ├── LoadingBar (F-05) ← 새로 추가
-  └── WebView
-      └── LoadingSpinner (오버레이, WebView 내부 유지)
-  ```
+  - 요구사항 분석서에서 WebView가 loadTimeout() 시그널 제공 (이미 정의됨)
+  - LoadingIndicator는 순수 UI 컴포넌트로 유지 (타이머 로직 없음)
+  - 타임아웃은 WebView의 로딩 상태와 밀접하게 연관 (단일 책임 원칙)
+  - BrowserWindow는 타임아웃 시그널을 받아 QMessageBox 표시
+- **구현**: WebView::loadStarted()에서 QTimer::singleShot(30000) 시작
+- **트레이드오프**: WebView가 타이머 관리 책임 추가 (로딩 로직과 함께 관리)
 
 ### 결정 6: 에러 상태 시각적 피드백
 - **선택지**:
   - A) 프로그레스바 색상만 변경 (녹색 → 빨간색)
-  - B) 프로그레스바 + 스피너를 에러 아이콘으로 교체
-  - C) 에러 오버레이만 표시 (프로그레스바 숨김)
-- **결정**: A) + B) 조합 (프로그레스바 빨간색 + 스피너 → 에러 아이콘)
+  - B) 스피너를 에러 아이콘으로 교체 + 프로그레스바 빨간색
+  - C) 별도의 에러 다이얼로그 표시 (QMessageBox)
+- **결정**: B) 스피너를 에러 아이콘으로 교체 + 프로그레스바 빨간색
 - **근거**:
-  - 색상 변경만으로는 색맹 사용자에게 인지 어려움 (접근성)
-  - 에러 아이콘(⚠️)으로 명확한 시각적 피드백 제공
-  - 1초간 표시 후 F-02 WebView의 ErrorOverlay로 전환 (현재 구조 유지)
-- **트레이드오프**: 약간의 복잡도 증가 (에러 상태 분기 처리)
+  - 명확한 시각적 구분 (정상 로딩 vs 에러)
+  - 1초간 표시 후 F-10 에러 페이지로 전환 (점진적 전환)
+  - QMessageBox는 모달 다이얼로그로 사용자 클릭 필요 (UX 저해)
+  - QSS 동적 변경으로 프로그레스바 색상 전환 가능
+- **구현**:
+  - `loadError(QString)` 시그널 수신 → setStyleSheet("...background: red...")
+  - QLabel 아이콘 변경 → QPixmap(":/icons/error.png") 또는 유니코드 "⚠️"
+  - QTimer::singleShot(1000) 후 hide() 및 에러 페이지 전환
+- **트레이드오프**: 에러 상태 처리 로직 추가 (상태 머신 복잡도 증가)
 
-## 4. LoadingBar 컴포넌트 설계
+### 결정 7: 페이드아웃 애니메이션
+- **선택지**:
+  - A) QPropertyAnimation (opacity 0.0 → 1.0)
+  - B) QGraphicsOpacityEffect + QPropertyAnimation
+  - C) 애니메이션 없이 즉시 hide()
+- **결정**: B) QGraphicsOpacityEffect + QPropertyAnimation
+- **근거**:
+  - Qt Widgets에서 opacity 애니메이션은 QGraphicsOpacityEffect 필요
+  - 부드러운 전환 효과로 UX 향상
+  - QPropertyAnimation은 하드웨어 가속 지원
+  - 즉시 hide()는 갑작스러운 화면 전환으로 불편
+- **구현**:
+  ```cpp
+  QGraphicsOpacityEffect *effect = new QGraphicsOpacityEffect(this);
+  setGraphicsEffect(effect);
+  QPropertyAnimation *anim = new QPropertyAnimation(effect, "opacity");
+  anim->setDuration(500); // 0.5초
+  anim->setStartValue(1.0);
+  anim->setEndValue(0.0);
+  anim->start(QAbstractAnimation::DeleteWhenStopped);
+  ```
+- **트레이드오프**: 애니메이션 코드 추가 (복잡도 증가)
 
-### 컴포넌트 구조
-```
-src/components/LoadingBar/
-├── LoadingBar.js           # 메인 컴포넌트
-├── LoadingBar.module.less  # 스타일
-└── index.js                # Export 진입점
-```
+## 4. 클래스 설계
 
-### Props 인터페이스
-```javascript
-// src/components/LoadingBar/LoadingBar.js
-import PropTypes from 'prop-types'
+### LoadingIndicator 클래스
 
-LoadingBar.propTypes = {
-	// 로딩 상태
-	isLoading: PropTypes.bool.isRequired,        // 로딩 중 여부
-	isError: PropTypes.bool,                     // 에러 상태 여부
+#### 헤더 파일: src/ui/LoadingIndicator.h
 
-	// 진행률 제어 (선택, 외부에서 제어 시 사용)
-	progress: PropTypes.number,                  // 0~100, 지정 시 가상 진행률 무시
+```cpp
+#pragma once
 
-	// 콜백
-	onLoadComplete: PropTypes.func,              // 100% 도달 후 페이드아웃 완료 시 호출
+#include <QWidget>
+#include <QProgressBar>
+#include <QLabel>
+#include <QVBoxLayout>
+#include <QTimer>
+#include <QMovie>
+#include <QScopedPointer>
 
-	// 스타일 커스터마이징
-	className: PropTypes.string,
-	barHeight: PropTypes.number,                 // 프로그레스바 높이 (기본 8px)
-	barColor: PropTypes.string,                  // 프로그레스바 색상 (기본 Moonstone 액센트 색)
-	errorColor: PropTypes.string                 // 에러 시 색상 (기본 빨간색)
-}
-
-LoadingBar.defaultProps = {
-	isError: false,
-	progress: null,  // null이면 가상 진행률 사용
-	onLoadComplete: () => {},
-	className: '',
-	barHeight: 8,
-	barColor: 'var(--accent-color)',             // Moonstone 테마 변수
-	errorColor: '#d32f2f'                        // Material Design Red 700
-}
-```
-
-### 상태 정의
-```javascript
-// 가상 진행률 상태
-const [virtualProgress, setVirtualProgress] = useState(0)  // 0~100
-
-// 애니메이션 상태
-const [isAnimating, setIsAnimating] = useState(false)
-
-// 페이드아웃 상태
-const [isFadingOut, setIsFadingOut] = useState(false)
-
-// requestAnimationFrame 참조
-const rafRef = useRef(null)
-const startTimeRef = useRef(0)
-```
-
-### 가상 진행률 알고리즘 구현
-```javascript
-/**
- * 가상 진행률 계산 함수
- * @param {number} elapsedMs - 로딩 시작부터 경과한 밀리초
- * @returns {number} - 0~95 범위의 진행률
- */
-const calculateVirtualProgress = (elapsedMs) => {
-	const seconds = elapsedMs / 1000
-
-	if (seconds < 3) {
-		// 0~3초: 0% → 60% (빠른 증가)
-		return (seconds / 3) * 60
-	} else if (seconds < 10) {
-		// 3~10초: 60% → 90% (중간 속도)
-		const t = (seconds - 3) / 7  // 0~1 범위로 정규화
-		return 60 + t * 30
-	} else {
-		// 10초 이후: 90% → 95% (매우 느림)
-		const t = Math.min((seconds - 10) / 20, 1)  // 20초 동안 5% 증가 (0.25%/초)
-		return 90 + t * 5
-	}
-}
+namespace webosbrowser {
 
 /**
- * requestAnimationFrame 기반 진행률 업데이트
+ * @class LoadingIndicator
+ * @brief 웹 페이지 로딩 중 시각적 피드백 제공 위젯
+ *
+ * QProgressBar (상단) + 스피너 오버레이 (중앙) 조합.
+ * WebView의 loadProgress 시그널과 연동하여 실시간 진행률 표시.
  */
-useEffect(() => {
-	if (!isLoading || isError) {
-		// 로딩 중이 아니거나 에러 상태면 애니메이션 중단
-		if (rafRef.current) {
-			cancelAnimationFrame(rafRef.current)
-			rafRef.current = null
-		}
-		return
-	}
+class LoadingIndicator : public QWidget {
+    Q_OBJECT
 
-	// 로딩 시작 시각 기록
-	startTimeRef.current = Date.now()
-	setIsAnimating(true)
+public:
+    explicit LoadingIndicator(QWidget *parent = nullptr);
+    ~LoadingIndicator() override;
 
-	// 애니메이션 루프
-	const animate = () => {
-		const elapsed = Date.now() - startTimeRef.current
-		const newProgress = calculateVirtualProgress(elapsed)
+    LoadingIndicator(const LoadingIndicator&) = delete;
+    LoadingIndicator& operator=(const LoadingIndicator&) = delete;
 
-		setVirtualProgress(newProgress)
+    /**
+     * @brief 로딩 인디케이터 표시 (페이드인)
+     */
+    void show();
 
-		// 95%에 도달하면 애니메이션 중단 (실제 완료 이벤트 대기)
-		if (newProgress < 95) {
-			rafRef.current = requestAnimationFrame(animate)
-		} else {
-			setIsAnimating(false)
-		}
-	}
+    /**
+     * @brief 로딩 인디케이터 숨김 (페이드아웃)
+     * @param immediate true면 즉시 숨김 (애니메이션 없음)
+     */
+    void hide(bool immediate = false);
 
-	rafRef.current = requestAnimationFrame(animate)
+    /**
+     * @brief 진행률 업데이트
+     * @param progress 진행률 (0~100)
+     */
+    void setProgress(int progress);
 
-	// cleanup
-	return () => {
-		if (rafRef.current) {
-			cancelAnimationFrame(rafRef.current)
-			rafRef.current = null
-		}
-	}
-}, [isLoading, isError])
+    /**
+     * @brief 로딩 중인 URL 표시
+     * @param url URL 문자열 (최대 50자, 말줄임 처리)
+     */
+    void setLoadingUrl(const QString &url);
+
+    /**
+     * @brief 에러 상태로 전환
+     * @param errorMessage 에러 메시지
+     */
+    void showError(const QString &errorMessage);
+
+    /**
+     * @brief 타임아웃 경고 표시 (30초 초과)
+     */
+    void showTimeoutWarning();
+
+private:
+    void setupUI();
+    void setupAnimations();
+    void startFadeIn();
+    void startFadeOut();
+    void resetToNormalState();
+
+private slots:
+    void onUpdateThrottled();
+
+private:
+    // UI 컴포넌트
+    QProgressBar *progressBar_;       ///< 상단 프로그레스바
+    QWidget *overlayWidget_;          ///< 중앙 오버레이 컨테이너
+    QVBoxLayout *overlayLayout_;      ///< 오버레이 레이아웃
+    QLabel *spinnerLabel_;            ///< 스피너 아이콘 (QMovie)
+    QLabel *statusLabel_;             ///< "페이지 로딩 중..." 텍스트
+    QLabel *urlLabel_;                ///< URL 표시 (선택적)
+
+    // 애니메이션
+    QMovie *spinnerMovie_;            ///< 스피너 GIF 애니메이션
+    QGraphicsOpacityEffect *opacityEffect_;  ///< 페이드인/아웃 효과
+
+    // 상태 관리
+    QTimer *updateThrottleTimer_;     ///< 진행률 업데이트 쓰로틀링 (100ms)
+    int cachedProgress_;              ///< 캐싱된 진행률 (쓰로틀링용)
+    bool isErrorState_;               ///< 에러 상태 플래그
+};
+
+} // namespace webosbrowser
 ```
 
-### 로딩 완료 처리 (100% 이동 + 페이드아웃)
-```javascript
-useEffect(() => {
-	// isLoading이 false가 되면 (로딩 완료) 100%로 즉시 이동
-	if (!isLoading && virtualProgress > 0 && !isError) {
-		setVirtualProgress(100)
+#### 구현 파일: src/ui/LoadingIndicator.cpp (핵심 로직)
 
-		// 0.5초 후 페이드아웃 시작
-		const fadeOutTimer = setTimeout(() => {
-			setIsFadingOut(true)
+```cpp
+#include "LoadingIndicator.h"
+#include <QPropertyAnimation>
+#include <QDebug>
 
-			// 페이드아웃 애니메이션 완료 후 (0.5초) 콜백 호출
-			setTimeout(() => {
-				setVirtualProgress(0)
-				setIsFadingOut(false)
-				onLoadComplete()
-			}, 500)
-		}, 100)  // 100% 도달 후 0.1초 유지
+namespace webosbrowser {
 
-		return () => clearTimeout(fadeOutTimer)
-	}
-}, [isLoading, virtualProgress, isError, onLoadComplete])
+LoadingIndicator::LoadingIndicator(QWidget *parent)
+    : QWidget(parent)
+    , progressBar_(new QProgressBar(this))
+    , overlayWidget_(new QWidget(this))
+    , overlayLayout_(new QVBoxLayout(overlayWidget_))
+    , spinnerLabel_(new QLabel(overlayWidget_))
+    , statusLabel_(new QLabel("페이지 로딩 중...", overlayWidget_))
+    , urlLabel_(new QLabel(overlayWidget_))
+    , spinnerMovie_(new QMovie(":/resources/icons/spinner.gif", QByteArray(), this))
+    , opacityEffect_(new QGraphicsOpacityEffect(this))
+    , updateThrottleTimer_(new QTimer(this))
+    , cachedProgress_(0)
+    , isErrorState_(false)
+{
+    setupUI();
+    setupAnimations();
+    hide(true);  // 초기 상태: 숨김
+}
+
+LoadingIndicator::~LoadingIndicator() {
+    qDebug() << "LoadingIndicator: 소멸";
+}
+
+void LoadingIndicator::setupUI() {
+    // 프로그레스바 설정
+    progressBar_->setRange(0, 100);
+    progressBar_->setValue(0);
+    progressBar_->setTextVisible(false);
+    progressBar_->setFixedHeight(8);
+    progressBar_->setStyleSheet(
+        "QProgressBar {"
+        "  border: none;"
+        "  background-color: rgba(0, 0, 0, 0.1);"
+        "}"
+        "QProgressBar::chunk {"
+        "  background-color: #00C851;"  // 녹색 (정상)
+        "}"
+    );
+
+    // 오버레이 위젯 설정
+    overlayWidget_->setStyleSheet(
+        "QWidget {"
+        "  background-color: rgba(0, 0, 0, 0.5);"  // 반투명 검정 배경
+        "  border-radius: 12px;"
+        "}"
+    );
+
+    // 스피너 설정
+    spinnerLabel_->setMovie(spinnerMovie_);
+    spinnerLabel_->setAlignment(Qt::AlignCenter);
+    spinnerLabel_->setFixedSize(80, 80);
+
+    // 상태 텍스트 설정
+    statusLabel_->setAlignment(Qt::AlignCenter);
+    statusLabel_->setStyleSheet(
+        "QLabel {"
+        "  font-size: 24px;"
+        "  color: white;"
+        "  background-color: transparent;"
+        "}"
+    );
+
+    // URL 라벨 설정
+    urlLabel_->setAlignment(Qt::AlignCenter);
+    urlLabel_->setStyleSheet(
+        "QLabel {"
+        "  font-size: 16px;"
+        "  color: rgba(255, 255, 255, 0.8);"
+        "  background-color: transparent;"
+        "}"
+    );
+
+    // 오버레이 레이아웃 구성
+    overlayLayout_->setSpacing(12);
+    overlayLayout_->setContentsMargins(24, 24, 24, 24);
+    overlayLayout_->addWidget(spinnerLabel_, 0, Qt::AlignCenter);
+    overlayLayout_->addWidget(statusLabel_, 0, Qt::AlignCenter);
+    overlayLayout_->addWidget(urlLabel_, 0, Qt::AlignCenter);
+
+    // 포커스 정책 (리모컨 포커스 받지 않음)
+    setFocusPolicy(Qt::NoFocus);
+    progressBar_->setFocusPolicy(Qt::NoFocus);
+    overlayWidget_->setFocusPolicy(Qt::NoFocus);
+}
+
+void LoadingIndicator::setupAnimations() {
+    // 스피너 애니메이션 시작
+    spinnerMovie_->start();
+
+    // 페이드 효과 설정
+    setGraphicsEffect(opacityEffect_);
+    opacityEffect_->setOpacity(1.0);
+
+    // 쓰로틀 타이머 설정 (100ms = 10fps)
+    updateThrottleTimer_->setInterval(100);
+    connect(updateThrottleTimer_, &QTimer::timeout,
+            this, &LoadingIndicator::onUpdateThrottled);
+}
+
+void LoadingIndicator::show() {
+    QWidget::show();
+    raise();  // z-order 최상위
+    startFadeIn();
+    updateThrottleTimer_->start();
+    qDebug() << "LoadingIndicator: 표시";
+}
+
+void LoadingIndicator::hide(bool immediate) {
+    updateThrottleTimer_->stop();
+
+    if (immediate) {
+        QWidget::hide();
+    } else {
+        startFadeOut();
+    }
+
+    resetToNormalState();
+    qDebug() << "LoadingIndicator: 숨김 (immediate:" << immediate << ")";
+}
+
+void LoadingIndicator::setProgress(int progress) {
+    cachedProgress_ = qBound(0, progress, 100);
+}
+
+void LoadingIndicator::setLoadingUrl(const QString &url) {
+    QString displayUrl = url;
+    if (displayUrl.length() > 50) {
+        displayUrl = displayUrl.left(47) + "...";
+    }
+    urlLabel_->setText(displayUrl);
+}
+
+void LoadingIndicator::showError(const QString &errorMessage) {
+    isErrorState_ = true;
+
+    // 프로그레스바 빨간색으로 변경
+    progressBar_->setStyleSheet(
+        "QProgressBar {"
+        "  border: none;"
+        "  background-color: rgba(0, 0, 0, 0.1);"
+        "}"
+        "QProgressBar::chunk {"
+        "  background-color: #ff4444;"  // 빨간색 (에러)
+        "}"
+    );
+
+    // 스피너를 에러 아이콘으로 교체
+    spinnerMovie_->stop();
+    spinnerLabel_->setPixmap(QPixmap(":/resources/icons/error.png"));
+
+    // 상태 텍스트 변경
+    statusLabel_->setText("페이지 로딩 실패");
+    urlLabel_->setText(errorMessage);
+
+    // 1초 후 숨김
+    QTimer::singleShot(1000, this, [this]() {
+        hide(false);
+    });
+
+    qDebug() << "LoadingIndicator: 에러 표시 -" << errorMessage;
+}
+
+void LoadingIndicator::showTimeoutWarning() {
+    statusLabel_->setText("로딩이 오래 걸리고 있습니다");
+    urlLabel_->setText("네트워크를 확인해주세요");
+    qDebug() << "LoadingIndicator: 타임아웃 경고";
+}
+
+void LoadingIndicator::onUpdateThrottled() {
+    progressBar_->setValue(cachedProgress_);
+}
+
+void LoadingIndicator::startFadeIn() {
+    QPropertyAnimation *anim = new QPropertyAnimation(opacityEffect_, "opacity", this);
+    anim->setDuration(200);  // 0.2초
+    anim->setStartValue(0.0);
+    anim->setEndValue(1.0);
+    anim->start(QAbstractAnimation::DeleteWhenStopped);
+}
+
+void LoadingIndicator::startFadeOut() {
+    QPropertyAnimation *anim = new QPropertyAnimation(opacityEffect_, "opacity", this);
+    anim->setDuration(500);  // 0.5초
+    anim->setStartValue(1.0);
+    anim->setEndValue(0.0);
+    anim->start(QAbstractAnimation::DeleteWhenStopped);
+
+    // 애니메이션 완료 후 hide() 호출
+    connect(anim, &QPropertyAnimation::finished, this, [this]() {
+        QWidget::hide();
+    });
+}
+
+void LoadingIndicator::resetToNormalState() {
+    isErrorState_ = false;
+    cachedProgress_ = 0;
+    progressBar_->setValue(0);
+
+    // 프로그레스바 녹색 복원
+    progressBar_->setStyleSheet(
+        "QProgressBar {"
+        "  border: none;"
+        "  background-color: rgba(0, 0, 0, 0.1);"
+        "}"
+        "QProgressBar::chunk {"
+        "  background-color: #00C851;"  // 녹색 (정상)
+        "}"
+    );
+
+    // 스피너 복원
+    spinnerLabel_->setMovie(spinnerMovie_);
+    spinnerMovie_->start();
+
+    // 텍스트 복원
+    statusLabel_->setText("페이지 로딩 중...");
+    urlLabel_->clear();
+}
+
+} // namespace webosbrowser
 ```
 
-### 에러 처리
-```javascript
-useEffect(() => {
-	if (isError) {
-		// 에러 발생 시 애니메이션 중단
-		if (rafRef.current) {
-			cancelAnimationFrame(rafRef.current)
-			rafRef.current = null
-		}
+### BrowserWindow 수정 (LoadingIndicator 통합)
 
-		// 1초 후 페이드아웃
-		const errorTimer = setTimeout(() => {
-			setVirtualProgress(0)
-		}, 1000)
+#### BrowserWindow.h 수정
 
-		return () => clearTimeout(errorTimer)
-	}
-}, [isError])
+```cpp
+// 기존 코드에 추가
+#include "LoadingIndicator.h"
+
+private:
+    // UI 컴포넌트
+    LoadingIndicator *loadingIndicator_;  ///< 로딩 인디케이터 (추가)
 ```
 
-## 5. WebView 내 LoadingSpinner 개선
+#### BrowserWindow.cpp 수정
 
-### LoadingSpinner 컴포넌트 (WebView 내부)
-```javascript
-// src/components/WebView/LoadingSpinner.js
-import Spinner from '@enact/moonstone/Spinner'
-import css from './LoadingSpinner.module.less'
+```cpp
+// setupUI() 수정
+void BrowserWindow::setupUI() {
+    // ... 기존 코드 ...
 
-const LoadingSpinner = ({ url, isError }) => {
-	if (isError) {
-		// 에러 아이콘 표시
-		return (
-			<div className={css.spinnerOverlay}>
-				<div className={css.errorIcon}>⚠️</div>
-				<p className={css.loadingText}>페이지 로딩 실패</p>
-			</div>
-		)
-	}
+    // LoadingIndicator 생성
+    loadingIndicator_ = new LoadingIndicator(centralWidget_);
 
-	// 로딩 스피너 표시
-	return (
-		<div className={css.spinnerOverlay}>
-			<Spinner size="large" className={css.spinner} />
-			<p className={css.loadingText}>페이지 로딩 중...</p>
-			{url && (
-				<p className={css.loadingUrl}>
-					{url.length > 50 ? `${url.slice(0, 50)}...` : url}
-				</p>
-			)}
-		</div>
-	)
+    // 메인 레이아웃에 추가 (WebView 위에 오버레이)
+    // 주의: mainLayout_에 추가하지 않고, centralWidget_의 자식으로만 설정
+    // 위치는 resizeEvent에서 수동 조정
+
+    // ... 기존 코드 ...
 }
 
-export default LoadingSpinner
-```
+// setupConnections() 수정
+void BrowserWindow::setupConnections() {
+    // WebView 로딩 시작 이벤트
+    connect(webView_, &WebView::loadStarted, this, [this]() {
+        loadingIndicator_->show();
+        loadingIndicator_->setProgress(0);
+        statusLabel_->setText("로딩 중...");
+        setWindowTitle("로딩 중... - webOS Browser");
+        qDebug() << "BrowserWindow: 페이지 로딩 시작";
+    });
 
-### LoadingSpinner 스타일
-```less
-// src/components/WebView/LoadingSpinner.module.less
-.spinnerOverlay {
-	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	background-color: rgba(0, 0, 0, 0.7);  // 반투명 오버레이
-	z-index: 1000;
+    // WebView 로딩 진행률 이벤트
+    connect(webView_, &WebView::loadProgress, this, [this](int progress) {
+        loadingIndicator_->setProgress(progress);
+        statusLabel_->setText(QString("로딩 중... %1%").arg(progress));
+    });
+
+    // WebView 로딩 완료 이벤트
+    connect(webView_, &WebView::loadFinished, this, [this](bool success) {
+        if (success) {
+            loadingIndicator_->hide(false);  // 페이드아웃
+            statusLabel_->setText("완료");
+            QString title = webView_->title();
+            if (title.isEmpty()) {
+                title = webView_->url().toString();
+            }
+            setWindowTitle(title + " - webOS Browser");
+            qDebug() << "BrowserWindow: 페이지 로딩 완료";
+        } else {
+            // 에러는 loadError 시그널에서 처리
+            qDebug() << "BrowserWindow: 페이지 로딩 실패";
+        }
+    });
+
+    // WebView URL 변경 이벤트
+    connect(webView_, &WebView::urlChanged, this, [this](const QUrl &url) {
+        loadingIndicator_->setLoadingUrl(url.toString());
+        statusLabel_->setText(url.toString());
+        qDebug() << "BrowserWindow: URL 변경 -" << url.toString();
+    });
+
+    // WebView 에러 이벤트 (추가)
+    connect(webView_, &WebView::loadError, this, [this](const QString &errorString) {
+        loadingIndicator_->showError(errorString);
+        statusLabel_->setText("에러: " + errorString);
+        qDebug() << "BrowserWindow: 로딩 에러 -" << errorString;
+    });
+
+    // WebView 타임아웃 이벤트 (추가)
+    connect(webView_, &WebView::loadTimeout, this, [this]() {
+        loadingIndicator_->showTimeoutWarning();
+        statusLabel_->setText("타임아웃: 30초 초과");
+        qDebug() << "BrowserWindow: 로딩 타임아웃";
+    });
+
+    // ... 기존 코드 ...
 }
 
-.spinner {
-	// Enact Spinner 크기 커스터마이징
-	width: 80px !important;
-	height: 80px !important;
-}
+// resizeEvent 오버라이드 (오버레이 위치 조정)
+void BrowserWindow::resizeEvent(QResizeEvent *event) {
+    QMainWindow::resizeEvent(event);
 
-.errorIcon {
-	font-size: 80px;
-	line-height: 1;
-	margin-bottom: 16px;
-}
-
-.loadingText {
-	color: var(--text-color);
-	font-size: 24px;  // PRD 최소 가독성 기준
-	margin-top: 16px;
-	margin-bottom: 8px;
-}
-
-.loadingUrl {
-	color: var(--text-secondary-color);
-	font-size: 18px;
-	max-width: 80%;
-	text-align: center;
-	word-break: break-all;
-}
-```
-
-## 6. LoadingBar 스타일 설계
-
-### CSS 구조
-```less
-// src/components/LoadingBar/LoadingBar.module.less
-.loadingBarContainer {
-	position: relative;
-	width: 100%;
-	height: 8px;  // 기본 높이 (prop으로 조정 가능)
-	background-color: rgba(255, 255, 255, 0.1);  // 배경 트랙
-	overflow: hidden;
-}
-
-.loadingBar {
-	position: absolute;
-	top: 0;
-	left: 0;
-	height: 100%;
-	background-color: var(--accent-color);  // Moonstone 액센트 색 (녹색)
-	transform-origin: left center;
-	transform: scaleX(0);  // 초기 0%
-	transition: transform 0.1s ease-out;  // 부드러운 애니메이션
-	will-change: transform;  // GPU 가속 힌트
-}
-
-.loadingBar.error {
-	background-color: #d32f2f;  // 에러 시 빨간색
-}
-
-.loadingBar.fadeOut {
-	opacity: 0;
-	transition: opacity 0.5s ease-out;
-}
-
-// 대화면 가독성을 위한 높이 증가 옵션
-.loadingBarContainer.thick {
-	height: 12px;
-}
-```
-
-### JSX 렌더링 로직
-```javascript
-const LoadingBar = ({
-	isLoading,
-	isError,
-	progress,
-	onLoadComplete,
-	className,
-	barHeight,
-	barColor,
-	errorColor
-}) => {
-	// ... (상태 및 로직 생략)
-
-	// 표시할 진행률 결정 (외부 progress 우선, 없으면 가상 진행률 사용)
-	const displayProgress = progress !== null ? progress : virtualProgress
-
-	// 렌더링하지 않을 조건
-	if (!isLoading && displayProgress === 0) {
-		return null
-	}
-
-	return (
-		<div
-			className={`${css.loadingBarContainer} ${className}`}
-			style={{ height: `${barHeight}px` }}
-		>
-			<div
-				className={`${css.loadingBar} ${isError ? css.error : ''} ${isFadingOut ? css.fadeOut : ''}`}
-				style={{
-					transform: `scaleX(${displayProgress / 100})`,
-					backgroundColor: isError ? errorColor : barColor
-				}}
-			/>
-		</div>
-	)
-}
-```
-
-## 7. 시퀀스 흐름
-
-### 주요 시나리오: 정상 페이지 로딩
-```
-사용자    BrowserView    LoadingBar    WebView    requestAnimationFrame
-  │            │              │            │                │
-  │  URL 입력  │              │            │                │
-  │───────────▶│              │            │                │
-  │            │  setUrl()    │            │                │
-  │            │─────────────────────────▶│                │
-  │            │              │            │  onLoadStart() │
-  │            │              │◀───────────│                │
-  │            │  isLoading=true          │                │
-  │            │─────────────▶│            │                │
-  │            │              │  startTimeRef.current = now │
-  │            │              │  animate() │                │
-  │            │              │────────────────────────────▶│
-  │            │              │            │  calculateVirtualProgress(0ms) = 0%
-  │            │              │◀────────────────────────────│
-  │            │              │  setVirtualProgress(0)      │
-  │            │              │            │                │
-  │            │              │  ... 16ms 후 ...            │
-  │            │              │  animate() │                │
-  │            │              │────────────────────────────▶│
-  │            │              │            │  calculateVirtualProgress(16ms) = 0.3%
-  │            │              │◀────────────────────────────│
-  │            │              │  setVirtualProgress(0.3)    │
-  │            │              │  CSS transform: scaleX(0.003)
-  │            │              │            │                │
-  │            │              │  ... 3초 후 ...             │
-  │            │              │  animate() │                │
-  │            │              │────────────────────────────▶│
-  │            │              │            │  calculateVirtualProgress(3000ms) = 60%
-  │            │              │◀────────────────────────────│
-  │            │              │  setVirtualProgress(60)     │
-  │            │              │  CSS transform: scaleX(0.6) │
-  │            │              │            │                │
-  │            │              │            │  ... 5초 후 (실제 로딩 완료) ...
-  │            │              │            │  onLoadEnd()   │
-  │            │              │◀───────────│                │
-  │            │  isLoading=false         │                │
-  │            │─────────────▶│            │                │
-  │            │              │  cancelAnimationFrame()     │
-  │            │              │  setVirtualProgress(100)    │
-  │            │              │  CSS transform: scaleX(1.0) │
-  │            │              │            │                │
-  │            │              │  ... 0.1초 후 ...           │
-  │            │              │  setIsFadingOut(true)       │
-  │            │              │  CSS opacity: 0 (0.5초 전환)│
-  │            │              │            │                │
-  │            │              │  ... 0.5초 후 ...           │
-  │            │              │  setVirtualProgress(0)      │
-  │            │              │  onLoadComplete()           │
-  │            │              │──────────▶                  │
-```
-
-### 에러 시나리오: 네트워크 에러
-```
-BrowserView    LoadingBar    WebView    requestAnimationFrame
-  │                │            │                │
-  │  setUrl()      │            │                │
-  │───────────────────────────▶│                │
-  │                │            │  onLoadStart() │
-  │                │◀───────────│                │
-  │  isLoading=true             │                │
-  │───────────────▶│            │                │
-  │                │  animate() 시작             │
-  │                │────────────────────────────▶│
-  │                │  60% 도달  │                │
-  │                │            │                │
-  │                │            │  onLoadError() │
-  │                │◀───────────│                │
-  │  isError=true  │            │                │
-  │───────────────▶│            │                │
-  │                │  cancelAnimationFrame()     │
-  │                │  CSS: backgroundColor = red │
-  │                │            │                │
-  │                │  ... 1초 후 ...             │
-  │                │  setVirtualProgress(0)      │
-  │                │  페이드아웃                 │
-```
-
-## 8. BrowserView 통합
-
-### BrowserView 수정 사항
-```javascript
-// src/views/BrowserView.js
-import { useState } from 'react'
-import { Panel, Header } from '@enact/moonstone/Panels'
-import WebView from '../components/WebView'
-import LoadingBar from '../components/LoadingBar'  // ← 새로 추가
-import logger from '../utils/logger'
-
-import css from './BrowserView.module.less'
-
-const BrowserView = () => {
-	const [currentUrl, setCurrentUrl] = useState('https://www.google.com')
-	const [isLoading, setIsLoading] = useState(false)  // ← 새로 추가
-	const [isError, setIsError] = useState(false)      // ← 새로 추가
-
-	const handleLoadStart = () => {
-		setIsLoading(true)
-		setIsError(false)
-		logger.info('[BrowserView] 페이지 로딩 시작:', currentUrl)
-	}
-
-	const handleLoadEnd = ({ url, title, duration }) => {
-		setIsLoading(false)
-		setIsError(false)
-		logger.info('[BrowserView] 페이지 로딩 완료:', { url, title, duration })
-	}
-
-	const handleLoadError = ({ errorCode, errorMessage, url }) => {
-		setIsLoading(false)
-		setIsError(true)
-		logger.error('[BrowserView] 페이지 로딩 실패:', { errorCode, errorMessage, url })
-	}
-
-	const handleLoadComplete = () => {
-		logger.debug('[BrowserView] LoadingBar 페이드아웃 완료')
-	}
-
-	return (
-		<Panel className={css.browserView}>
-			<Header title="webOS Browser" />
-
-			{/* URLBar 영역 (F-03에서 구현 예정) */}
-			<div className={css.urlBarPlaceholder}>
-				<span className={css.urlLabel}>URL:</span>
-				<span className={css.urlText}>{currentUrl}</span>
-			</div>
-
-			{/* LoadingBar 영역 (새로 추가) */}
-			<LoadingBar
-				isLoading={isLoading}
-				isError={isError}
-				onLoadComplete={handleLoadComplete}
-			/>
-
-			{/* WebView 메인 영역 */}
-			<div className={css.webviewWrapper}>
-				<WebView
-					url={currentUrl}
-					onLoadStart={handleLoadStart}
-					onLoadEnd={handleLoadEnd}
-					onLoadError={handleLoadError}
-				/>
-			</div>
-
-			{/* NavigationBar 영역 (F-04에서 구현 예정) */}
-			<div className={css.navBarPlaceholder}>
-				<span className={css.navButton}>[ 뒤로 ]</span>
-				<span className={css.navButton}>[ 앞으로 ]</span>
-				<span className={css.navButton}>[ 새로고침 ]</span>
-				<span className={css.navButton}>[ 홈 ]</span>
-			</div>
-		</Panel>
-	)
-}
-
-export default BrowserView
-```
-
-### BrowserView 스타일 업데이트
-```less
-// src/views/BrowserView.module.less
-.browserView {
-	display: flex;
-	flex-direction: column;
-	height: 100vh;
-	width: 100vw;
-	background-color: var(--bg-color);
-}
-
-.urlBarPlaceholder {
-	height: 80px;
-	padding: var(--spacing-md);
-	background-color: #2a2a2a;
-	color: var(--text-color);
-	font-size: var(--font-size-min);
-	display: flex;
-	align-items: center;
-	flex-shrink: 0;  // URLBar 높이 고정
-}
-
-.urlLabel {
-	margin-right: 12px;
-	font-weight: bold;
-}
-
-.urlText {
-	flex: 1;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-// LoadingBar는 별도 공간 차지하지 않음 (0px 높이, 절대 위치)
-// → BrowserView.js에서 LoadingBar를 렌더링하되, CSS로 URLBar 아래에 오버레이로 배치
-
-.webviewWrapper {
-	flex: 1;  // 남은 공간 전체 차지
-	overflow: hidden;
-	position: relative;  // LoadingBar의 절대 위치 기준
-}
-
-.navBarPlaceholder {
-	height: 100px;
-	padding: var(--spacing-md);
-	background-color: #2a2a2a;
-	color: var(--text-color);
-	font-size: var(--font-size-min);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 24px;
-	flex-shrink: 0;  // NavigationBar 높이 고정
-}
-
-.navButton {
-	cursor: pointer;
-	padding: 8px 16px;
-	background-color: rgba(255, 255, 255, 0.1);
-	border-radius: 4px;
-	transition: background-color 0.2s;
-
-	&:hover {
-		background-color: rgba(255, 255, 255, 0.2);
-	}
+    // LoadingIndicator 오버레이 위치 조정
+    QRect webViewGeometry = webView_->geometry();
+    QSize overlaySize(400, 200);
+    QPoint overlayPos(
+        webViewGeometry.center().x() - overlaySize.width() / 2,
+        webViewGeometry.center().y() - overlaySize.height() / 2
+    );
+    loadingIndicator_->setGeometry(QRect(overlayPos, overlaySize));
 }
 ```
 
-## 9. 애니메이션 최적화
+## 5. 시퀀스 흐름
 
-### GPU 가속 활성화
-- **transform 속성 사용**: `scaleX()`는 GPU 레이어에서 처리되어 리페인트 발생 안 함
-- **will-change 힌트**: CSS `will-change: transform`으로 브라우저에 최적화 힌트 제공
-- **opacity 전환**: 페이드아웃 시 `opacity` 속성 사용 (GPU 가속)
+### 주요 시나리오 1: 일반 페이지 로딩
 
-### 피해야 할 속성
-- ❌ `width`, `left`, `margin-left`: 리플로우 유발 (성능 저하)
-- ❌ `background-position`: GPU 가속 안 됨
-- ✅ `transform: scaleX()`: GPU 가속 (권장)
-- ✅ `opacity`: GPU 가속 (권장)
-
-### requestAnimationFrame 최적화
-```javascript
-// 불필요한 렌더링 방지: 진행률이 실제로 변경된 경우에만 setState 호출
-const animate = () => {
-	const elapsed = Date.now() - startTimeRef.current
-	const newProgress = calculateVirtualProgress(elapsed)
-
-	// 진행률이 0.5% 이상 변경된 경우에만 업데이트 (불필요한 렌더링 방지)
-	if (Math.abs(newProgress - virtualProgress) > 0.5) {
-		setVirtualProgress(newProgress)
-	}
-
-	if (newProgress < 95) {
-		rafRef.current = requestAnimationFrame(animate)
-	}
-}
+```
+사용자 → BrowserWindow → WebView → LoadingIndicator
+  │                          │                │
+  │  (URLBar Enter)          │                │
+  │──────────────────────▶   │                │
+  │                          │  load(url)     │
+  │                          │───────────▶    │
+  │                          │                │
+  │                          │  loadStarted() │
+  │                          │◀───────────    │
+  │                          │                │  show()
+  │                          │                │──────────▶
+  │                          │                │  [프로그레스바 0%]
+  │                          │                │  [스피너 표시]
+  │                          │                │
+  │                          │  loadProgress(25)
+  │                          │───────────────────────────▶
+  │                          │                │  setProgress(25)
+  │                          │                │  [프로그레스바 25%]
+  │                          │                │
+  │                          │  loadProgress(50)
+  │                          │───────────────────────────▶
+  │                          │                │  setProgress(50)
+  │                          │                │  [프로그레스바 50%]
+  │                          │                │
+  │                          │  loadProgress(100)
+  │                          │───────────────────────────▶
+  │                          │                │  setProgress(100)
+  │                          │                │  [프로그레스바 100%]
+  │                          │                │
+  │                          │  loadFinished(true)
+  │                          │◀───────────    │
+  │                          │                │  hide(false)
+  │                          │                │──────────▶
+  │                          │                │  [페이드아웃 0.5초]
+  │                          │                │  [숨김]
+  │  [페이지 표시]           │                │
+  │◀──────────────────────   │                │
 ```
 
-### 메모리 효율성
-- **타이머 정리**: 컴포넌트 Unmount 시 requestAnimationFrame 취소
-- **이벤트 리스너 없음**: 모든 상태 전이는 props 기반 (메모리 누수 없음)
+### 주요 시나리오 2: 로딩 에러
 
-## 10. 타임아웃 메시지 표시 (30초)
-
-### LoadingSpinner에 타임아웃 경고 추가
-```javascript
-// src/components/WebView/LoadingSpinner.js
-import { useState, useEffect } from 'react'
-import Spinner from '@enact/moonstone/Spinner'
-import css from './LoadingSpinner.module.less'
-
-const LoadingSpinner = ({ url, isError, loadingStartTime }) => {
-	const [isTimeout, setIsTimeout] = useState(false)
-
-	// 30초 경과 감지
-	useEffect(() => {
-		if (!loadingStartTime) return
-
-		const timer = setTimeout(() => {
-			setIsTimeout(true)
-		}, 30000)  // 30초
-
-		return () => clearTimeout(timer)
-	}, [loadingStartTime])
-
-	if (isError) {
-		return (
-			<div className={css.spinnerOverlay}>
-				<div className={css.errorIcon}>⚠️</div>
-				<p className={css.loadingText}>페이지 로딩 실패</p>
-			</div>
-		)
-	}
-
-	return (
-		<div className={css.spinnerOverlay}>
-			<Spinner size="large" className={css.spinner} />
-			<p className={css.loadingText}>
-				{isTimeout ? '로딩이 오래 걸리고 있습니다. 네트워크를 확인해주세요.' : '페이지 로딩 중...'}
-			</p>
-			{url && (
-				<p className={css.loadingUrl}>
-					{url.length > 50 ? `${url.slice(0, 50)}...` : url}
-				</p>
-			)}
-		</div>
-	)
-}
-
-export default LoadingSpinner
+```
+사용자 → BrowserWindow → WebView → LoadingIndicator
+  │                          │                │
+  │  load(invalid-url)       │                │
+  │──────────────────────▶   │                │
+  │                          │  loadStarted() │
+  │                          │───────────────────────────▶
+  │                          │                │  show()
+  │                          │                │  [프로그레스바 0%]
+  │                          │                │
+  │                          │  loadProgress(30)
+  │                          │───────────────────────────▶
+  │                          │                │  setProgress(30)
+  │                          │                │
+  │                          │  loadError("ERR_NAME_NOT_RESOLVED")
+  │                          │◀───────────    │
+  │                          │                │  showError()
+  │                          │                │──────────▶
+  │                          │                │  [프로그레스바 빨간색]
+  │                          │                │  [스피너 → ⚠️]
+  │                          │                │  [텍스트: "페이지 로딩 실패"]
+  │                          │                │
+  │                          │                │  (1초 대기)
+  │                          │                │  hide(false)
+  │                          │                │──────────▶
+  │  [에러 페이지 표시]      │                │
+  │◀──────────────────────   │                │
 ```
 
-### WebView에서 loadingStartTime 전달
-```javascript
-// src/components/WebView/WebView.js (수정)
-// LoadingSpinner에 loadingStartTime prop 추가
-{state === 'loading' && (
-	<LoadingSpinner
-		url={currentUrlRef.current}
-		isError={false}
-		loadingStartTime={loadStartTimeRef.current}
-	/>
-)}
+### 주요 시나리오 3: 로딩 타임아웃 (30초 초과)
 
-{state === 'error' && error && (
-	<LoadingSpinner
-		url={currentUrlRef.current}
-		isError={true}
-		loadingStartTime={null}
-	/>
-)}
+```
+사용자 → BrowserWindow → WebView → LoadingIndicator
+  │                          │                │
+  │  load(slow-url)          │                │
+  │──────────────────────▶   │                │
+  │                          │  loadStarted() │
+  │                          │───────────────────────────▶
+  │                          │                │  show()
+  │                          │                │  [프로그레스바 0%]
+  │                          │                │
+  │                          │  (30초 경과)   │
+  │                          │                │
+  │                          │  loadTimeout() │
+  │                          │◀───────────    │
+  │                          │                │  showTimeoutWarning()
+  │                          │                │──────────▶
+  │                          │                │  [텍스트: "로딩이 오래 걸리고 있습니다"]
+  │                          │                │  [텍스트: "네트워크를 확인해주세요"]
+  │                          │                │  [프로그레스바 계속 표시]
+  │                          │                │
+  │  (Back 버튼)             │                │
+  │──────────────────────▶   │  stop()        │
+  │                          │───────────▶    │
+  │                          │                │  hide(false)
+  │                          │                │──────────▶
 ```
 
-## 11. 영향 범위 분석
+## 6. 영향 범위 분석
 
 ### 수정 필요한 기존 파일
-1. **src/views/BrowserView.js**:
-   - LoadingBar 컴포넌트 import 추가
-   - isLoading, isError 상태 추가
-   - handleLoadStart, handleLoadEnd, handleLoadError에서 상태 업데이트
-   - JSX에 `<LoadingBar>` 추가 (URLBar 아래)
-2. **src/views/BrowserView.module.less**:
-   - LoadingBar 배치를 위한 스타일 조정 (URLBar 아래 오버레이)
-3. **src/components/WebView/WebView.js**:
-   - LoadingSpinner를 별도 컴포넌트로 분리 (현재 JSX에서 인라인 렌더링)
-   - LoadingSpinner에 loadingStartTime prop 전달
+
+| 파일 경로 | 변경 내용 | 이유 |
+|---------|---------|------|
+| `src/browser/BrowserWindow.h` | `LoadingIndicator *loadingIndicator_` 멤버 추가 | LoadingIndicator 통합 |
+| `src/browser/BrowserWindow.cpp` | `setupUI()`, `setupConnections()`, `resizeEvent()` 수정 | LoadingIndicator 시그널 연결 및 오버레이 배치 |
+| `src/browser/WebView.cpp` | `loadTimeout()` 시그널 구현 (QTimer 30초) | 타임아웃 기능 추가 |
 
 ### 새로 생성할 파일
-1. **src/components/LoadingBar/LoadingBar.js**: 프로그레스바 컴포넌트
-2. **src/components/LoadingBar/LoadingBar.module.less**: 프로그레스바 스타일
-3. **src/components/LoadingBar/index.js**: Export 진입점
-4. **src/components/WebView/LoadingSpinner.js**: 스피너 오버레이 컴포넌트 (WebView에서 분리)
-5. **src/components/WebView/LoadingSpinner.module.less**: 스피너 스타일
+
+| 파일 경로 | 역할 |
+|---------|------|
+| `src/ui/LoadingIndicator.h` | LoadingIndicator 클래스 헤더 |
+| `src/ui/LoadingIndicator.cpp` | LoadingIndicator 클래스 구현 |
+| `resources/icons/spinner.gif` | 스피너 애니메이션 GIF (80x80px) |
+| `resources/icons/error.png` | 에러 아이콘 PNG (80x80px) |
+| `resources/resources.qrc` | Qt 리소스 파일 (아이콘 등록) |
+| `docs/components/LoadingIndicator.md` | 컴포넌트 문서 (사용법, API) |
 
 ### 영향 받는 기존 기능
-- **F-02 (WebView)**: LoadingSpinner를 별도 컴포넌트로 분리하여 재사용성 향상 (기능 변경 없음)
-- **F-03 (URLBar)**: LoadingBar가 URLBar 아래에 배치되므로 레이아웃 조정 필요 (F-03 구현 시 고려)
-- **F-04 (페이지 탐색)**: 뒤로/앞으로 버튼 클릭 시에도 LoadingBar 동작 (이벤트 기반이므로 자동 동작)
 
-## 12. 기술적 주의사항
+| 기능 | 영향 내용 | 대응 방안 |
+|-----|---------|----------|
+| F-02 (WebView) | `loadStarted()`, `loadProgress()`, `loadFinished()` 시그널 사용 | 이미 정의되어 있으므로 영향 없음 |
+| F-04 (네비게이션) | 뒤로/앞으로 이동 시에도 로딩 인디케이터 동작 | 시그널 기반이므로 자동 동작 |
+| F-10 (에러 처리) | 에러 시 LoadingIndicator 1초 표시 후 에러 페이지로 전환 | LoadingIndicator의 showError()에서 1초 타이머 처리 |
 
-### iframe 진행률 제약
-- **문제**: HTML iframe은 실제 로딩 진행률(loadprogress 이벤트) 제공 안 함
-- **대응**: 가상 진행률 알고리즘으로 사용자에게 진행 상태 체감 제공
-- **한계**: 실제 로딩 완료 시점과 가상 진행률이 불일치할 수 있음 (95%에서 대기 후 완료 이벤트 시 100% 이동)
+## 7. 리소스 설계
 
-### requestAnimationFrame 호환성
-- **webOS 4.x Chromium 53**: requestAnimationFrame 지원 확인됨
-- **폴백**: 만약 지원되지 않을 경우 setInterval로 폴백 (코드에 조건 추가)
-  ```javascript
-  if (typeof requestAnimationFrame === 'undefined') {
-  	// setInterval 기반 애니메이션 로직
-  }
-  ```
+### GIF 애니메이션 스펙 (spinner.gif)
 
-### CSS transform 성능
-- **webOS 프로젝터 제약**: 하드웨어 성능이 제한적이므로 복잡한 애니메이션 회피
-- **최적화**: `transform: scaleX()`만 사용하여 GPU 가속 최대 활용
-- **측정**: 개발 모드에서 `performance.now()`로 프레임 시간 측정, 33ms(30fps) 이하 유지 확인
+| 속성 | 값 |
+|-----|-----|
+| 크기 | 80x80px |
+| 프레임 수 | 12프레임 (30도 회전) |
+| 프레임 레이트 | 12fps (1000ms / 12 = ~83ms/프레임) |
+| 배경 | 투명 (알파 채널) |
+| 색상 | 흰색 (#FFFFFF) 또는 브랜드 컬러 |
+| 파일 크기 | 50KB 이하 |
 
-### 색맹 사용자 접근성
-- **문제**: 프로그레스바 색상만으로 에러 구분 시 색맹 사용자 인지 어려움
-- **대응**: 색상 + 에러 아이콘(⚠️) 조합으로 다중 시각적 단서 제공
-- **추가 고려**: 향후 F-11(설정)에서 고대비 테마 제공 시 에러 색상 대비 강화
+### 에러 아이콘 스펙 (error.png)
 
-### 모션 감도
-- **PRD 요구사항**: 모션 저감 모드 옵션 제공 고려 (F-11에서 구현 예정)
-- **현재 단계**: 기본 애니메이션 구현, 모션 감도 옵션은 F-11에서 추가
-- **구현 방향**: F-11에서 `prefersReducedMotion` 설정 추가 → LoadingBar에서 애니메이션 비활성화 처리
+| 속성 | 값 |
+|-----|-----|
+| 크기 | 80x80px |
+| 배경 | 투명 (알파 채널) |
+| 아이콘 | 삼각형 경고 표시(⚠️) |
+| 색상 | 빨간색 (#ff4444) |
+| 파일 크기 | 10KB 이하 |
 
-### 탭 관리 연동 (F-06)
-- **현재**: BrowserView 레벨에서 단일 LoadingBar 관리
-- **F-06 시**: 탭별 로딩 상태 관리 필요
-- **준비**:
-  - LoadingBar는 독립 컴포넌트로 설계되어 재사용 가능
-  - 활성 탭의 isLoading, isError 상태를 LoadingBar에 전달
-  - 백그라운드 탭 로딩 시 LoadingBar 숨김 처리 (활성 탭만 표시)
+### Qt 리소스 파일 (resources/resources.qrc)
 
-## 13. 테스트 시나리오
+```xml
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource>
+        <file>icons/spinner.gif</file>
+        <file>icons/error.png</file>
+    </qresource>
+</RCC>
+```
 
-### 단위 테스트 (Jest)
-1. **LoadingBar 컴포넌트**:
-   - 가상 진행률 계산 함수 테스트 (0초, 3초, 10초 입력 시 예상 진행률)
-   - isLoading=true 시 프로그레스바 렌더링 확인
-   - isLoading=false 시 100% 이동 후 페이드아웃 확인
-   - isError=true 시 빨간색 변경 확인
-2. **LoadingSpinner 컴포넌트**:
-   - 30초 경과 시 타임아웃 메시지 표시 확인
-   - isError=true 시 에러 아이콘 표시 확인
+### CMakeLists.txt 수정
 
-### 통합 테스트 (BrowserView)
-1. WebView 로딩 시작 → LoadingBar 표시 확인
-2. WebView 로딩 완료 → LoadingBar 100% 도달 후 사라짐 확인
-3. WebView 로딩 실패 → LoadingBar 빨간색 변경 확인
+```cmake
+# Qt 리소스 컴파일 추가
+qt5_add_resources(RESOURCES
+    resources/resources.qrc
+)
 
-### E2E 테스트 (실제 디바이스)
-1. 빠른 페이지 로딩 (1초 이내): 프로그레스바가 빠르게 100% 도달
-2. 느린 페이지 로딩 (10초): 프로그레스바가 90%까지 증가 후 대기
-3. 매우 느린 페이지 로딩 (30초 초과): 타임아웃 메시지 표시
-4. 페이지 로딩 실패 (404): 프로그레스바 빨간색 + 에러 아이콘
-5. 연속 로딩 (URL 빠르게 여러 번 변경): 이전 애니메이션 취소 및 새 로딩 시작
+# 소스 파일에 LoadingIndicator 추가
+set(SOURCES
+    # ... 기존 소스 ...
+    src/ui/LoadingIndicator.cpp
+    ${RESOURCES}  # 리소스 추가
+)
+```
 
-### 성능 테스트
-1. requestAnimationFrame 프레임레이트 측정 (30fps 이상 유지 확인)
-2. 메모리 사용량 측정 (LoadingBar 추가로 5MB 이하 증가 확인)
-3. CPU 사용률 측정 (애니메이션 중 10% 이하 확인)
+## 8. QSS 스타일 시트 설계
 
-## 14. 구현 순서
+### 정상 상태 (녹색 프로그레스바)
 
-### Phase 1: LoadingBar 컴포넌트 기본 구조
-1. `src/components/LoadingBar/` 디렉토리 생성
-2. `LoadingBar.js` 생성 (Props 인터페이스, PropTypes 정의)
-3. `LoadingBar.module.less` 생성 (기본 스타일)
-4. `index.js` 생성 (export default)
+```css
+QProgressBar {
+    border: none;
+    background-color: rgba(0, 0, 0, 0.1);
+    min-height: 8px;
+    max-height: 8px;
+}
 
-### Phase 2: 가상 진행률 알고리즘 구현
-1. `calculateVirtualProgress()` 함수 구현
-2. requestAnimationFrame 기반 애니메이션 루프 구현
-3. useEffect로 isLoading 감지 및 애니메이션 시작/중단
-4. 95% 도달 시 애니메이션 중단 로직 추가
+QProgressBar::chunk {
+    background-color: #00C851;  /* 녹색 (LG webOS 브랜드 컬러 고려) */
+    border-radius: 4px;
+}
+```
 
-### Phase 3: 로딩 완료 및 페이드아웃 처리
-1. isLoading=false 감지 → 100% 즉시 이동
-2. 0.1초 후 페이드아웃 시작
-3. 0.5초 후 onLoadComplete 콜백 호출
-4. CSS opacity 전환 애니메이션 추가
+### 에러 상태 (빨간색 프로그레스바)
 
-### Phase 4: 에러 처리
-1. isError=true 시 애니메이션 중단
-2. 프로그레스바 색상 빨간색 변경 (CSS 클래스 추가)
-3. 1초 후 페이드아웃
+```css
+QProgressBar {
+    border: none;
+    background-color: rgba(0, 0, 0, 0.1);
+    min-height: 8px;
+    max-height: 8px;
+}
 
-### Phase 5: LoadingSpinner 분리 (WebView 내부)
-1. `src/components/WebView/LoadingSpinner.js` 생성
-2. WebView.js의 인라인 스피너 JSX를 LoadingSpinner 컴포넌트로 이동
-3. Enact Spinner import 및 사용
-4. 30초 타임아웃 메시지 로직 추가
-5. 에러 아이콘 표시 로직 추가
+QProgressBar::chunk {
+    background-color: #ff4444;  /* 빨간색 */
+    border-radius: 4px;
+}
+```
 
-### Phase 6: BrowserView 통합
-1. `src/views/BrowserView.js`에 LoadingBar import
-2. isLoading, isError 상태 추가
-3. handleLoadStart, handleLoadEnd, handleLoadError에서 상태 업데이트
-4. JSX에 `<LoadingBar>` 추가 (URLBar 아래)
-5. 레이아웃 스타일 조정 (BrowserView.module.less)
+### 오버레이 위젯
 
-### Phase 7: 애니메이션 최적화
-1. CSS `will-change: transform` 추가
-2. 불필요한 렌더링 방지 로직 추가 (0.5% 이상 변경 시에만 업데이트)
-3. GPU 가속 확인 (Chrome DevTools Performance 탭)
+```css
+QWidget#overlayWidget {
+    background-color: rgba(0, 0, 0, 0.5);  /* 반투명 검정 */
+    border-radius: 12px;
+}
 
-### Phase 8: 로컬 테스트
-1. `npm run serve` 실행
-2. 브라우저에서 프로그레스바 표시 확인
-3. 가상 진행률 증가 확인 (개발자 도구에서 진행률 로깅)
-4. 로딩 완료 시 100% 이동 및 페이드아웃 확인
-5. 에러 시 빨간색 변경 확인
+QLabel#spinnerLabel {
+    background-color: transparent;
+}
 
-### Phase 9: 실제 디바이스 테스트
-1. `npm run pack-p` 빌드
-2. `ares-package dist/` IPK 생성
-3. 프로젝터 설치 및 실행
-4. 대화면(100인치)에서 프로그레스바 시인성 확인 (3m 거리)
-5. 주요 사이트 로딩 시 정상 동작 확인 (Google, YouTube)
-6. 애니메이션 프레임레이트 확인 (부드러운 움직임)
+QLabel#statusLabel {
+    font-size: 24px;
+    font-weight: bold;
+    color: white;
+    background-color: transparent;
+}
 
-### Phase 10: 성능 측정 및 최적화
-1. requestAnimationFrame 프레임 시간 로깅 (33ms 이하 확인)
-2. 메모리 사용량 측정 (5MB 이하 확인)
-3. 느린 페이지 로딩 시 90% 대기 동작 확인
-4. 성능 이슈 발견 시 애니메이션 간격 조정
+QLabel#urlLabel {
+    font-size: 16px;
+    color: rgba(255, 255, 255, 0.8);
+    background-color: transparent;
+}
+```
 
-## 15. 확장성 고려사항
+## 9. 기술적 주의사항
+
+### 성능 최적화
+1. **프로그레스바 업데이트 쓰로틀링**: QTimer 100ms 간격으로 repaint 최소화 (CPU 사용률 5% 이하 유지)
+2. **하드웨어 가속 활용**: Qt OpenGL 렌더링 (webOS 기본 지원)
+3. **메모리 관리**: QScopedPointer 사용으로 자동 메모리 해제, 3MB 이하 유지
+4. **애니메이션 최적화**: QPropertyAnimation은 Qt Graphics Framework 사용 (GPU 가속)
+
+### 리모컨 최적화
+1. **포커스 정책**: LoadingIndicator는 `Qt::NoFocus` 설정 (리모컨 포커스 받지 않음)
+2. **Back 버튼 처리**: BrowserWindow에서 Back 버튼 이벤트 수신 시 `WebView::stop()` 호출 → 로딩 취소
+3. **포커스 유지**: 로딩 중에도 WebView가 포커스 유지 (스크롤 등 리모컨 조작 가능)
+
+### webOS 플랫폼 고려사항
+1. **메모리 제약**: 프로젝터 하드웨어 메모리 제한 (LoadingIndicator는 경량 위젯으로 유지)
+2. **무선 네트워크**: 네트워크 속도 변동성이 크므로 타임아웃 경고 중요
+3. **OpenGL 지원**: QMovie, QPropertyAnimation 모두 OpenGL 가속 지원 확인
+
+### 동시성 고려사항
+1. **시그널/슬롯 스레드 안전성**: Qt는 기본적으로 스레드 안전한 시그널/슬롯 제공
+2. **QTimer 주기 충돌 방지**: updateThrottleTimer_와 애니메이션 타이머가 다른 주기 사용
+3. **에러 상태 경합 방지**: isErrorState_ 플래그로 중복 에러 처리 방지
+
+### 테스트 시나리오 고려사항
+1. **빠른 로딩 (1초 이내)**: 프로그레스바가 0% → 100% 즉시 이동 후 페이드아웃 (깜박임 없음)
+2. **매우 느린 로딩 (30초 초과)**: 타임아웃 경고 표시되는지 확인
+3. **연속 로딩**: 이전 로딩 인디케이터가 완전히 정리되고 새 로딩 시작하는지 확인
+4. **에러 복구**: 에러 후 다시 정상 로딩 시 녹색 프로그레스바로 복원되는지 확인
+
+## 10. 단위 테스트 계획
+
+### 테스트 파일: tests/unit/LoadingIndicatorTest.cpp
+
+```cpp
+#include <gtest/gtest.h>
+#include "ui/LoadingIndicator.h"
+#include <QTest>
+
+using namespace webosbrowser;
+
+class LoadingIndicatorTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        indicator_ = new LoadingIndicator();
+    }
+
+    void TearDown() override {
+        delete indicator_;
+    }
+
+    LoadingIndicator *indicator_;
+};
+
+TEST_F(LoadingIndicatorTest, InitialState) {
+    EXPECT_FALSE(indicator_->isVisible());
+}
+
+TEST_F(LoadingIndicatorTest, ShowHide) {
+    indicator_->show();
+    EXPECT_TRUE(indicator_->isVisible());
+
+    indicator_->hide(true);  // 즉시 숨김
+    EXPECT_FALSE(indicator_->isVisible());
+}
+
+TEST_F(LoadingIndicatorTest, SetProgress) {
+    indicator_->setProgress(50);
+    // 100ms 대기 (쓰로틀링)
+    QTest::qWait(150);
+    // 진행률 확인은 private 멤버 접근 불가로 생략
+}
+
+TEST_F(LoadingIndicatorTest, ErrorState) {
+    indicator_->show();
+    indicator_->showError("Test Error");
+
+    // 1초 후 숨김 확인
+    QTest::qWait(1100);
+    EXPECT_FALSE(indicator_->isVisible());
+}
+
+TEST_F(LoadingIndicatorTest, ProgressBounds) {
+    indicator_->setProgress(-10);  // 음수
+    indicator_->setProgress(150);  // 100 초과
+    // qBound로 0~100 범위 보장 (내부 검증)
+}
+```
+
+### 통합 테스트: tests/integration/WebViewLoadingTest.cpp
+
+```cpp
+// WebView와 LoadingIndicator 통합 테스트
+TEST_F(BrowserWindowTest, LoadingIndicatorIntegration) {
+    // WebView 로딩 시작
+    webView_->load("https://www.google.com");
+
+    // LoadingIndicator 표시 확인
+    EXPECT_TRUE(loadingIndicator_->isVisible());
+
+    // 로딩 완료 대기 (최대 10초)
+    QSignalSpy spy(webView_, &WebView::loadFinished);
+    ASSERT_TRUE(spy.wait(10000));
+
+    // LoadingIndicator 숨김 확인 (페이드아웃 500ms 대기)
+    QTest::qWait(600);
+    EXPECT_FALSE(loadingIndicator_->isVisible());
+}
+```
+
+## 11. 컴포넌트 문서 작성 계획
+
+### docs/components/LoadingIndicator.md
+
+```markdown
+# LoadingIndicator 컴포넌트
+
+## 개요
+웹 페이지 로딩 중 시각적 피드백을 제공하는 Qt Widgets 기반 UI 컴포넌트.
+
+## 주요 기능
+- 실시간 로딩 진행률 표시 (QProgressBar)
+- 스피너 애니메이션 (QMovie)
+- 로딩 상태 텍스트 및 URL 표시
+- 에러 상태 시각적 피드백 (빨간색 프로그레스바 + 에러 아이콘)
+- 타임아웃 경고 (30초 초과)
+- 페이드인/아웃 애니메이션
+
+## API
+
+### Public Methods
+- `void show()`: 로딩 인디케이터 표시 (페이드인)
+- `void hide(bool immediate)`: 로딩 인디케이터 숨김 (페이드아웃 또는 즉시)
+- `void setProgress(int progress)`: 진행률 업데이트 (0~100)
+- `void setLoadingUrl(const QString &url)`: 로딩 중인 URL 표시
+- `void showError(const QString &errorMessage)`: 에러 상태 표시
+- `void showTimeoutWarning()`: 타임아웃 경고 표시
+
+### Signals
+(없음 - 순수 UI 컴포넌트)
+
+## 사용 예제
+
+\`\`\`cpp
+// BrowserWindow에서 사용
+LoadingIndicator *indicator = new LoadingIndicator(this);
+
+// WebView 시그널 연결
+connect(webView_, &WebView::loadStarted, [indicator]() {
+    indicator->show();
+});
+
+connect(webView_, &WebView::loadProgress, [indicator](int progress) {
+    indicator->setProgress(progress);
+});
+
+connect(webView_, &WebView::loadFinished, [indicator](bool success) {
+    indicator->hide(false);  // 페이드아웃
+});
+\`\`\`
+
+## 스타일 커스터마이징
+QSS를 통해 프로그레스바 색상 변경 가능.
+```
+
+## 12. 향후 확장 가능성
 
 ### F-06 (탭 관리)와의 연동
-- **현재**: 단일 WebView → 단일 LoadingBar
-- **F-06 시**: 다중 탭 → 활성 탭의 로딩 상태만 LoadingBar에 표시
-- **준비**:
-  - LoadingBar는 독립 컴포넌트로 설계되어 재사용 가능
-  - BrowserView에서 활성 탭의 isLoading, isError를 LoadingBar에 전달
-  - 백그라운드 탭 로딩 시 탭 UI에 작은 로딩 아이콘만 표시 (LoadingBar 숨김)
+- 각 탭마다 독립적인 LoadingIndicator 인스턴스 관리
+- 백그라운드 탭 로딩 시: 프로그레스바 숨김, 탭 아이콘에 작은 스피너만 표시
+- TabManager에서 활성 탭 변경 시 LoadingIndicator 전환
+- 구현: `QMap<int, LoadingIndicator*> tabLoadingIndicators_;`
 
-### F-11 (설정)과의 연동
-- **모션 저감 모드**: 설정에서 애니메이션 비활성화 옵션 제공
-- **구현 방향**:
-  - F-11에서 `prefersReducedMotion` boolean 설정 추가
-  - LoadingBar에 `disableAnimation` prop 추가
-  - disableAnimation=true 시 requestAnimationFrame 사용 안 함, 즉시 100% 표시
-- **고대비 테마**: 에러 색상을 더 강한 대비로 변경 (색맹 사용자 대응)
+### F-11 (설정 화면)과의 연동
+- 애니메이션 비활성화 옵션 (모션 감도가 높은 사용자)
+- 프로그레스바 스타일 선택 (슬림 4px / 표준 8px / 굵게 12px)
+- 스피너 스타일 선택 (회전 원형 / 점 3개 / 막대)
+- QSettings로 설정 영속화
+- 구현: `LoadingIndicator::applySettings(const QSettings &settings)`
 
-### 실제 진행률 지원 (향후)
-- **현재**: 가상 진행률만 지원 (iframe 제약)
-- **향후**: postMessage API로 iframe 내부와 통신하여 실제 리소스 로딩 진행률 수집 가능
-- **구현 방향**:
-  - LoadingBar에 `progress` prop 추가 (이미 설계에 포함)
-  - progress가 null이면 가상 진행률 사용, 숫자이면 실제 진행률 사용
-  - iframe 내부에 진행률 추적 스크립트 주입 (Same-Origin일 때만 가능)
+### 성능 모니터링 (F-08 히스토리 연동)
+- 페이지별 평균 로딩 시간 측정 (QElapsedTimer)
+- HistoryService에 로딩 시간 저장
+- 설정 화면에서 "평균 로딩 시간 통계" 표시
+- 구현: `QElapsedTimer loadingTimer_` 추가
+
+### 고급 UX 기능
+- 프리로딩 인디케이터: 백그라운드 탭 미리 로딩 시 작은 프로그레스바
+- 네트워크 속도 표시: "빠름 🟢 / 보통 🟡 / 느림 🔴" 아이콘
+- 예상 완료 시간: 이전 로딩 패턴 기반 예측 (ML 모델 또는 단순 평균)
 
 ## 변경 이력
 
 | 날짜 | 변경 내용 | 이유 |
 |------|-----------|------|
-| 2026-02-12 | 최초 작성 | F-05 요구사항 기반 기술 설계 |
+| 2026-02-14 | Native App 관점 전면 재작성 | Qt/C++ 기술 스택으로 마이그레이션 |
+| 2026-02-14 | QMovie + GIF 방식 선택 | 단순성과 안정성 (GIF 리소스 사용) |
+| 2026-02-14 | 쓰로틀링 100ms 결정 | 성능과 부드러움 균형 (10fps) |
+| 2026-02-14 | raise() 오버레이 방식 채택 | QStackedWidget 불필요, 단순성 우선 |
