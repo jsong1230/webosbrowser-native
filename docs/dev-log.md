@@ -2084,3 +2084,39 @@ src/browser/BrowserWindow.cpp
 src/browser/BrowserWindow.h
 src/ui/NavigationBar.cpp
 src/ui/NavigationBar.h
+
+#### [2026-02-15 00:29] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-15 00:35] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-15 00:38] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-15 00:49] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-15 08:11] Task: unknown
+- 변경 파일: CMakeLists.txt
+F10_IMPLEMENTATION_SUMMARY.md
+F14_IMPLEMENTATION_SUMMARY.md
+docs/dev-log.md
+src/browser/BrowserWindow.cpp
+src/browser/BrowserWindow.h
+src/models/Bookmark.h
+src/services/BookmarkService.cpp
+src/services/BookmarkService.h
+src/services/SettingsService.cpp
+
+#### [2026-02-15 08:19] Task: unknown
+- 변경 파일: CMakeLists.txt
+F10_IMPLEMENTATION_SUMMARY.md
+F14_IMPLEMENTATION_SUMMARY.md
+GETTING_STARTED.md
+README.md
+docs/dev-log.md
+src/browser/BrowserWindow.cpp
+src/browser/BrowserWindow.h
+src/models/Bookmark.h
+src/services/BookmarkService.cpp

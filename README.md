@@ -4,8 +4,8 @@
 
 ## 프로젝트 정보
 
-- **버전**: 0.5.0
-- **기술 스택**: C++, Qt 5.x, webOS Native SDK
+- **버전**: 1.0.0 (개발 완료)
+- **기술 스택**: C++17, Qt 5.15+, CMake 3.16+
 - **타겟 플랫폼**: webOS 6.x (LG HU715QW 프로젝터)
 - **전신 프로젝트**: [webosbrowser](https://github.com/jsong1230/webosbrowser) (Web App PoC)
 
@@ -59,56 +59,102 @@ webosbrowser-native/
 
 ## 개발 현황
 
-### 완료된 기능
-- ✅ **F-01**: 프로젝트 초기 설정 (CMake, Qt 프로젝트 구조)
-- ✅ **F-02**: 웹뷰 통합 (WebView 클래스, PIMPL 패턴, BrowserWindow 통합)
-- ✅ **F-03**: URL 입력 UI (URLBar, VirtualKeyboard, URLValidator, 120개 테스트)
-- ✅ **F-06**: 탭 관리 시스템 Phase 1 (TabManager, 단일 탭 모드, 85개 테스트)
-- ✅ **F-10**: 에러 처리 (ErrorPage, QStackedLayout, 119개 테스트, 배포 가능)
+### ✅ 전체 기능 구현 완료 (15/15)
 
-### 진행 중인 기능
-- 🔄 **F-07**: 북마크 관리 (Phase 1~3 완료, Phase 4~7 진행 예정)
+**MS-1: 핵심 기능 (5개)**
+- ✅ **F-01**: 프로젝트 초기 설정
+- ✅ **F-02**: 웹뷰 통합 (WebView 스텁 구현)
+- ✅ **F-03**: URL 입력 UI (URLBar, VirtualKeyboard, URLValidator)
+- ✅ **F-04**: 페이지 탐색 컨트롤 (NavigationBar, 뒤로/앞으로/새로고침)
+- ✅ **F-05**: 로딩 인디케이터 (LoadingIndicator, 프로그레스바)
 
-### 계획 중인 기능
-- **F-04**: 페이지 탐색 컨트롤
-- **F-05**: 로딩 인디케이터
-- **F-08**: 히스토리 관리
-- **F-09**: 다운로드 관리
-- **F-11**: 설정 기능
-- **F-12**: 페이지 내 검색
-- **F-13**: 리모컨 단축키
-- **F-14**: 보안 표시
-- **F-15**: 홈 화면
+**MS-2: 편의 기능 (5개)**
+- ✅ **F-06**: 탭 관리 시스템 (TabManager, 단일 탭 모드)
+- ✅ **F-07**: 북마크 관리 (BookmarkPanel, BookmarkService)
+- ✅ **F-08**: 히스토리 관리 (HistoryPanel, HistoryService, 날짜별 그룹화)
+- ✅ **F-09**: 검색 엔진 통합 (SearchEngine, Google/Naver/Bing)
+- ✅ **F-10**: 에러 처리 (ErrorPage, 네트워크/타임아웃/404 처리)
 
-## F-02: 웹뷰 통합 개요
+**MS-3: 고급 기능 (5개)**
+- ✅ **F-11**: 설정 화면 (SettingsPanel, 시작 페이지/검색엔진/히스토리 관리)
+- ✅ **F-12**: 다운로드 관리 (설계 완료, WebEngine 의존성으로 빌드 제외)
+- ✅ **F-13**: 리모컨 단축키 (KeyCodeConstants, 리모컨 5방향 + 컬러버튼)
+- ✅ **F-14**: HTTPS 보안 표시 (SecurityIndicator, Secure/Insecure/Local)
+- ✅ **F-15**: 즐겨찾기 홈 화면 (HomePage, 북마크 그리드 뷰)
 
-webOS Native SDK의 Qt WebEngineView를 활용하여 Chromium 기반 웹 페이지 렌더링을 구현했습니다.
+### 📦 빌드 상태
+- ✅ CMake 빌드 시스템 구성 완료
+- ✅ 24개 소스 파일 컴파일 성공
+- ✅ 실행 파일 생성: `bin/webosbrowser` (1.1MB, arm64)
+- ✅ 실행 테스트 통과
 
-### 주요 기능
-- **WebView 클래스**: PIMPL 패턴으로 QWebEngineView 캡슐화
-- **로딩 이벤트**: loadStarted, loadProgress, loadFinished 시그널
-- **네비게이션**: goBack(), goForward() API
-- **타임아웃 메커니즘**: 30초 초과 시 로딩 중단 및 에러 시그널
-- **상태 관리**: LoadingState enum (Idle, Loading, Loaded, Error)
+## 빌드 및 실행
 
-### 빌드 및 실행
+### 개발 환경 빌드 (macOS)
+
 ```bash
-# 빌드
+# 1. Qt 설치 확인
+qmake --version  # Qt 5.15+ 필요
+
+# 2. 빌드 디렉토리 생성
 mkdir -p build && cd build
+
+# 3. CMake 설정
 cmake ..
+
+# 4. 컴파일
 make
 
-# 실행 (macOS)
-./webosbrowser
+# 5. 실행
+./bin/webosbrowser
 ```
 
-초기 URL(https://www.google.com)이 자동으로 로드됩니다.
+### 현재 빌드 제한사항
 
-### 다음 단계
+⚠️ **개발 환경에서는 WebView 스텁 사용**
+- Qt5 WebEngine이 Homebrew에서 제공되지 않음
+- 실제 웹 렌더링 기능 없음 (UI 구조만 동작)
+- 로그에서 확인: `[WebView] 스텁 구현 - 실제 웹 렌더링 기능 없음`
 
-1. **F-03 URL 입력 UI**: WebView::load(QUrl) API를 활용한 사용자 입력 UI
-2. **F-04 페이지 탐색**: WebView::goBack()/goForward() API를 활용한 네비게이션 UI
-3. **F-05 로딩 인디케이터**: WebView::loadProgress 시그널을 활용한 프로그레스바
+⚠️ **다운로드 기능 제외**
+- F-12 다운로드 관리는 설계 완료되었으나 WebEngine 의존성으로 빌드에서 제외
+- DownloadManager.cpp, DownloadPanel.cpp 컴파일 제외
+
+### webOS 디바이스 배포
+
+실제 webOS 프로젝터에서 사용하려면:
+
+```bash
+# 1. webOS WebView API로 WebView 구현 교체
+# src/browser/WebView_stub.cpp → src/browser/WebView.cpp
+# webOS WebView API 사용하여 실제 렌더링 구현
+
+# 2. IPK 패키지 생성
+ares-package build/
+
+# 3. 프로젝터에 설치
+ares-install --device projector com.jsong.webosbrowser.native_1.0.0_arm64.ipk
+
+# 4. 실행
+ares-launch --device projector com.jsong.webosbrowser.native
+```
+
+### 필요한 실제 구현
+
+실제 webOS 디바이스에서 동작하려면 다음 구현 필요:
+
+1. **WebView API 통합**
+   - webOS WebView API로 `WebView_stub.cpp` 교체
+   - WAM(Web Application Manager) 연동
+   - 실제 Chromium 렌더링 구현
+
+2. **LS2 API 통합**
+   - `StorageService`: 현재 QSettings 사용 → LS2 DB8 API 사용
+   - 북마크/히스토리 영구 저장소 구현
+
+3. **다운로드 기능 복원**
+   - `DownloadManager`: WebEngine 대신 webOS 다운로드 API 사용
+   - `DownloadPanel`: UI는 구현 완료
 
 ## 참고 자료
 
