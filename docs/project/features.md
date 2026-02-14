@@ -7,7 +7,7 @@
 | ID | 기능명 | 설명 | 우선순위 | 의존성 | 병렬 그룹 | 충돌 영역 | 마일스톤 | 상태 |
 |----|--------|------|----------|--------|-----------|-----------|----------|------|
 | F-01 | 프로젝트 초기 설정 | Qt/C++ 프로젝트 생성, CMakeLists.txt, 디렉토리 구조, 스켈레톤 코드 | Must | - | - | 프로젝트 전체 | M1 | ✅ 완료 |
-| F-02 | 웹뷰 통합 | webOS WebView API로 웹 페이지 렌더링 (Native) | Must | F-01 | - | WebView 컴포넌트 | M1 | 🔄 진행중 |
+| F-02 | 웹뷰 통합 | webOS WebView API로 웹 페이지 렌더링 (Native) | Must | F-01 | - | WebView 컴포넌트 | M1 | ✅ 완료 |
 | F-03 | URL 입력 UI | Qt 입력 위젯으로 URL 입력 (리모컨 최적화) | Must | F-01 | PG-1 | URLBar 컴포넌트 | M1 | ⏳ 대기 |
 | F-04 | 페이지 탐색 컨트롤 | 뒤로/앞으로/새로고침/홈 버튼 UI (Qt Widgets) | Must | F-02 | PG-1 | NavigationBar 컴포넌트 | M1 | ⏳ 대기 |
 | F-05 | 로딩 인디케이터 | 페이지 로딩 중 프로그레스바 표시 (Qt ProgressBar) | Must | F-02 | PG-1 | LoadingBar 컴포넌트 | M1 | ⏳ 대기 |
