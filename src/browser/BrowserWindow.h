@@ -16,6 +16,7 @@ class WebView;
 class URLBar;
 class NavigationBar;
 class LoadingIndicator;
+class TabManager;
 
 /**
  * @class BrowserWindow
@@ -63,6 +64,9 @@ private:
     LoadingIndicator *loadingIndicator_;  ///< 로딩 인디케이터
     WebView *webView_;               ///< 웹뷰 컴포넌트
     QLabel *statusLabel_;            ///< 상태 라벨 (하단)
+
+    // 서비스
+    TabManager *tabManager_;         ///< 탭 관리자
 };
 
 } // namespace webosbrowser

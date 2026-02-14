@@ -5,6 +5,7 @@
 
 #include "BrowserWindow.h"
 #include "WebView.h"
+#include "TabManager.h"
 #include "../ui/URLBar.h"
 #include "../ui/NavigationBar.h"
 #include "../ui/LoadingIndicator.h"
@@ -25,6 +26,7 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     , loadingIndicator_(new LoadingIndicator(centralWidget_))
     , webView_(new WebView(centralWidget_))
     , statusLabel_(new QLabel("준비", this))
+    , tabManager_(new TabManager(this))
 {
     qDebug() << "BrowserWindow: 생성 중...";
 
@@ -64,6 +66,9 @@ void BrowserWindow::setupUI() {
 
     // NavigationBar와 WebView 연결
     navigationBar_->setWebView(webView_);
+
+    // TabManager에 현재 탭 등록
+    tabManager_->setCurrentTab(webView_);
 
     // 상태 바 설정
     statusLabel_->setStyleSheet(
