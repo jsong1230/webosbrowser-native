@@ -47,6 +47,7 @@ set(HEADERS
     src/ui/NavigationBar.h
     src/ui/LoadingIndicator.h
     src/ui/BookmarkPanel.h
+    src/models/Bookmark.h
     src/services/BookmarkService.h
     src/services/HistoryService.h
     src/services/StorageService.h

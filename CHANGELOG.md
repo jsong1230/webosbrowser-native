@@ -8,81 +8,88 @@
 
 ## [0.3.0] - 2026-02-14
 
-### F-09: 검색 엔진 통합 (Search Engine Integration) 완료
+### F-07: 북마크 관리 (Bookmark Management) Phase 1~3 완료
 
 #### Added (새로 추가됨)
 
-- **SearchEngine 클래스 (정적 메서드)**
-  - `src/services/SearchEngine.h`: 검색 엔진 관리 인터페이스 (3.5KB)
-  - `src/services/SearchEngine.cpp`: 검색 엔진 구현 (5.2KB)
-  - 4개 검색 엔진 지원: Google, Naver, Bing, DuckDuckGo
+- **데이터 모델**
+  - `src/models/Bookmark.h`: Bookmark, BookmarkFolder 구조체
+  - JSON 직렬화/역직렬화 지원
+  - 유효성 검증 메서드
 
-- **검색 엔진 API**
-  - `buildSearchUrl(query, engineId)`: 검색어 → 검색 URL 생성
-  - `getDefaultSearchEngine()`: 현재 설정된 검색 엔진 조회 (Qt Settings)
-  - `setDefaultSearchEngine(engineId)`: 기본 검색 엔진 설정
-  - `getAllSearchEngines()`: 모든 검색 엔진 목록 조회 (F-11 연동 준비)
-  - `getSearchEngineName(engineId)`: 검색 엔진 이름 조회
-  - `isSearchQuery(input)`: URL vs 검색어 자동 판단
+- **StorageService (webOS LS2 API 래퍼)**
+  - `src/services/StorageService.h/.cpp`: 데이터 영속 저장
+  - `initDatabase()`: 데이터베이스 초기화
+  - `putData()`, `findData()`, `getData()`, `deleteData()`: CRUD 작업
+  - `generateUuid()`: UUID 생성
+  - 비동기 API (std::function 콜백)
+  - 현재는 시뮬레이션 (QTimer), 향후 luna-service2 연동 필요
 
-- **URL 인코딩**
-  - `QUrl::toPercentEncoding()` 사용하여 XSS 방지
-  - 한글, 특수문자, 공백 처리 지원
-  - 예: "고양이 동영상" → "%EA%B3%A0%EC%96%91%EC%9D%B4%20%EB%8F%99%EC%98%81%EC%83%81"
+- **BookmarkService (북마크 비즈니스 로직)**
+  - `src/services/BookmarkService.h/.cpp`: 북마크 관리
+  - 북마크 CRUD: getAllBookmarks, getBookmarksByFolder, addBookmark, updateBookmark, deleteBookmark
+  - 폴더 관리: getAllFolders, addFolder, updateFolder, deleteFolder (하위 북마크 포함)
+  - 검색: searchBookmarks (제목, URL 부분 일치)
+  - incrementVisitCount: 방문 횟수 증가
+  - 시그널: bookmarkAdded, bookmarkUpdated, bookmarkDeleted, folderAdded, folderUpdated, folderDeleted
+  - 메모리 캐시 (QVector) 사용
 
-- **URLValidator 확장**
-  - `isSearchQuery()` 메서드 추가
-  - URL 형식 우선 처리 (프로토콜, 도메인, localhost, IP)
-  - 검색어 감지 로직 추가
+- **BookmarkPanel (북마크 관리 패널 UI)**
+  - `src/ui/BookmarkPanel.h/.cpp`: 북마크 목록 및 관리 UI
+  - QListWidget 기반 북마크 목록
+  - 검색 기능 (QLineEdit)
+  - 액션 버튼 (추가, 편집, 삭제, 새 폴더)
+  - 리모컨 키 이벤트 처리 (keyPressEvent: Escape, Enter, 방향키)
+  - 토스트 메시지 (QLabel, QTimer)
 
-- **URLBar 검색어 처리 통합**
-  - `validateAndCompleteUrl()`에서 검색어 처리
-  - URL 검증 실패 시 자동으로 검색 URL 생성
-  - 검색 URL을 WebView에 전달
+- **BookmarkDialog (북마크 추가/편집 다이얼로그)**
+  - 제목, URL, 폴더 선택, 설명 입력
+  - 편집 모드 시 URL 읽기 전용
+  - QComboBox로 폴더 선택
 
-- **설정 영속성**
-  - Qt Settings (`QSettings("LG", "webOSBrowser")`) 사용
-  - 앱 재시작 후에도 기본 검색 엔진 유지
-  - 저장 키: `"defaultSearchEngine"`
+- **FolderDialog (폴더 추가/편집 다이얼로그)**
+  - 폴더 이름 입력
+  - 간단한 입력 폼
 
-- **테스트**
-  - `tests/unit/SearchEngineTest.cpp`: 23개 테스트 케이스
-  - `tests/unit/URLValidatorTest_SearchQuery.cpp`: 13개 테스트 케이스
-  - 회귀 테스트: 기존 F-03 URL 입력 기능 정상 동작 확인
+- **NavigationBar 북마크 버튼**
+  - bookmarkButton_ (★ 아이콘)
+  - bookmarkButtonClicked() 시그널
+  - 포커스 순서 업데이트 (Back → Forward → Reload → Home → Bookmark)
 
-- **문서**
-  - `docs/components/SearchEngine.md`: API 레퍼런스 및 사용 가이드
-  - 검색 엔진 추가 가이드 포함
-  - 보안 고려사항 및 제약사항 문서화
+- **BrowserWindow 통합**
+  - StorageService, BookmarkService 초기화
+  - BookmarkPanel 생성 (우측 고정, 600px 너비)
+  - 북마크 버튼 클릭 시 패널 토글
+  - 북마크 선택 시 WebView 페이지 로드
+  - 현재 페이지 정보 동기화 (URL, 제목)
 
 #### Changed (변경됨)
 
-- **URLBar**
-  - 검색어 입력 시 자동으로 검색 URL 생성
-  - URL과 검색어 자동 판단 로직 통합
-
 - **CMakeLists.txt**
-  - SearchEngine.cpp/h 추가
-  - 테스트 파일 추가 (SearchEngineTest, URLValidatorTest_SearchQuery)
+  - src/models/Bookmark.h 추가
 
-#### API Changes (API 변경)
+- **BrowserWindow**
+  - storageService_, bookmarkService_, bookmarkPanel_ 멤버 추가
+  - currentUrl_, currentTitle_ 멤버 추가
+  - onBookmarkButtonClicked(), onBookmarkSelected() 슬롯 추가
 
-- `URLValidator::isSearchQuery()` 추가
-- `SearchEngine` 클래스 6개 정적 메서드 추가
+- **NavigationBar**
+  - bookmarkButton_ 추가
+  - setupUI(), setupConnections(), setupFocusOrder() 업데이트
 
-#### F-11 연동 준비
+#### Technical Notes
 
-- `getAllSearchEngines()`: 설정 화면에서 라디오 버튼 생성용
-- `getDefaultSearchEngine()`: 현재 선택된 엔진 조회용
-- `setDefaultSearchEngine()`: 검색 엔진 변경용
+- **Qt Widgets 기반**: QListWidget, QDialog, QPushButton 등 사용
+- **리모컨 지원**: QKeyEvent를 통한 방향키, 백 버튼 처리
+- **스타일**: Qt StyleSheet (QSS) 적용 (어두운 배경, 포커스 표시)
+- **비동기 처리**: std::function 콜백 기반
+- **메모리 관리**: 스마트 포인터 사용 (QScopedPointer, QObject 부모-자식 관계)
 
-#### 완료 기준 달성
+#### Known Issues
 
-- ✅ URL vs 검색어 자동 판단 (4개 케이스 통과)
-- ✅ 검색 URL 생성 (4개 검색 엔진 지원)
-- ✅ 검색 결과 페이지 로드 (WebView 통합)
-- ✅ 검색 엔진 설정 저장/로드 (Qt Settings)
-- ✅ 회귀 테스트 (기존 F-03 정상 동작)
+- **LS2 API 시뮬레이션**: 실제 webOS 환경에서 luna-service2 C API 연동 필요
+- **폴더 UI 미완성**: 폴더 아이콘, 브레드크럼 네비게이션 미구현 (Phase 4 예정)
+- **컬러 버튼 미매핑**: 리모컨 컬러 버튼 이벤트 처리 미구현 (Phase 5 예정)
 
 ---
 

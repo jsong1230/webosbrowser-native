@@ -1,183 +1,128 @@
 # 개발 진행 로그
 
-## [2026-02-14] F-09: 검색 엔진 통합 (Search Engine Integration)
+## [2026-02-14] F-07: 북마크 관리 (Bookmark Management)
 
 ### 상태
-✅ **완료**
+🚧 **진행 중** (Phase 1~3 완료, Phase 4~7 진행 예정)
 
 ### 실행 모드
-**순차 실행** (Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5)
+**단독 개발** (cpp-dev)
 
 ### 문서 상태
-- 요구사항 분석서: ✅ `docs/specs/search-engine-integration/requirements.md` (13KB)
-- 기술 설계서: ✅ `docs/specs/search-engine-integration/design.md` (43KB)
-- 구현 계획서: ✅ `docs/specs/search-engine-integration/plan.md` (25KB)
-- 컴포넌트 문서: ✅ `docs/components/SearchEngine.md` (11KB)
+- 요구사항 분석서: ✅ `docs/specs/bookmark-management/requirements.md`
+- 기술 설계서: ✅ `docs/specs/bookmark-management/design.md`
+- 구현 계획서: ✅ `docs/specs/bookmark-management/plan.md`
 - API 스펙: ❌ 해당 없음 (C++ 컴포넌트)
-- DB 설계서: ❌ 해당 없음 (Qt Settings 사용)
+- DB 설계서: ✅ StorageService (webOS LS2 API 래퍼)
+- 컴포넌트 문서: ✅ 소스 코드 주석 완료
 
 ### 설계 대비 변경사항
 
-#### 1. SearchEngine 클래스 구조 변경
-- **설계서**: JavaScript 모듈 (ES6 export/import)
-- **구현**: C++ 정적 클래스 (static methods)
-- **이유**: webOS Native App은 C++/Qt 기반, JavaScript 설계를 C++로 변환
-- **영향**: 함수 시그니처 변경 (`const QString&` 매개변수)
+#### 1. 데이터 저장소
+- **설계서**: JavaScript IndexedDB 사용
+- **구현**: webOS LS2 API 래퍼 (StorageService) - 현재는 시뮬레이션
+- **이유**: C++/Qt 환경이므로 webOS 네이티브 데이터베이스 서비스 사용 (DB8)
+- **향후**: 실제 webOS 환경에서 luna-service2 C API 연동 필요
 
-#### 2. 검색 엔진 정의 방식
-- **설계서**: `export const SEARCH_ENGINES = { ... }` (JavaScript 객체)
-- **구현**: `const QMap<QString, SearchEngineInfo>& getSearchEngines()` (정적 함수)
-- **이유**: C++에서 정적 초기화 및 네임스페이스 충돌 방지
-- **영향**: SearchEngineInfo 구조체 추가
+#### 2. UI 프레임워크
+- **설계서**: React/Enact (Moonstone UI)
+- **구현**: Qt Widgets (QListWidget, QDialog, QPushButton 등)
+- **이유**: C++/Qt 네이티브 앱이므로 Qt GUI 프레임워크 사용
+- **리모컨 지원**: QKeyEvent를 통한 방향키, 백 버튼 처리
 
-#### 3. 설정 저장소
-- **설계서**: localStorage API (브라우저 Web Storage)
-- **구현**: Qt Settings (`QSettings("LG", "webOSBrowser")`)
-- **이유**: webOS Native App에서는 Qt Settings 사용이 표준
-- **영향**: 설정 저장/로드 로직 변경
-
-#### 4. URL 인코딩 함수
-- **설계서**: `encodeURIComponent()` (JavaScript 내장 함수)
-- **구현**: `QUrl::toPercentEncoding()` (Qt API)
-- **이유**: Qt에서 제공하는 표준 URL 인코딩 함수 사용
-- **영향**: 인코딩 결과 동일
-
-#### 5. isSearchQuery() 메서드 위치
-- **설계서**: URLValidator 확장 후 SearchEngine에서 호출
-- **구현**: SearchEngine과 URLValidator 양쪽에 구현
-- **이유**: 코드 중복 방지 및 명확한 책임 분리
-- **영향**: 두 클래스 모두 동일한 로직 제공
+#### 3. 캐시 전략
+- **추가**: 메모리 캐시 사용 (QVector<Bookmark>, QVector<BookmarkFolder>)
+- **이유**: LS2 API 비동기 호출 최소화, 빠른 조회 성능
+- **로드**: 앱 시작 시 StorageService에서 전체 데이터 로드
 
 ### 구현 완료 항목
 
-#### Phase 1: SearchEngine 클래스 구현 (✅ 완료)
-- `src/services/SearchEngine.h` 인터페이스 작성 (115줄)
-- `src/services/SearchEngine.cpp` 구현 (190줄)
-- 4개 검색 엔진 정의 (Google, Naver, Bing, DuckDuckGo)
-- buildSearchUrl() 구현: 검색어 → 검색 URL 생성
-- getDefaultSearchEngine() 구현: Qt Settings 조회
-- setDefaultSearchEngine() 구현: Qt Settings 저장
-- getAllSearchEngines() 구현: F-11 연동 준비
-- getSearchEngineName() 구현: 검색 엔진 이름 조회
-- isSearchQuery() 구현: URL vs 검색어 판단
+#### Phase 1: 데이터 모델 + StorageService (✅ 완료)
+- `src/models/Bookmark.h`: Bookmark, BookmarkFolder 구조체
+  - JSON 직렬화/역직렬화 (toJson, fromJson)
+  - 유효성 검증 (isValid)
+- `src/services/StorageService.h/.cpp`: webOS LS2 API 래퍼
+  - initDatabase: 데이터베이스 초기화
+  - putData, findData, getData, deleteData: CRUD 작업
+  - generateUuid: UUID 생성 (QUuid 사용)
+  - 현재는 시뮬레이션 (QTimer로 비동기 모방)
+- `src/services/BookmarkService.h/.cpp`: 북마크 비즈니스 로직
+  - 북마크 CRUD: getAllBookmarks, getBookmarksByFolder, addBookmark, updateBookmark, deleteBookmark
+  - 폴더 관리: getAllFolders, addFolder, updateFolder, deleteFolder (하위 북마크 포함)
+  - 검색: searchBookmarks (제목, URL 부분 일치)
+  - incrementVisitCount: 방문 횟수 증가
+  - 시그널: bookmarkAdded, bookmarkUpdated, bookmarkDeleted, folderAdded, folderUpdated, folderDeleted
 
-#### Phase 2: URLValidator 확장 (✅ 완료)
-- `src/utils/URLValidator.h` 확장 (isSearchQuery 추가)
-- `src/utils/URLValidator.cpp` 확장 (32줄 추가)
-- URL 형식 우선 처리 로직 구현:
-  1. 프로토콜 포함 (`http://`, `https://`, `ftp://`) → URL
-  2. 도메인 형식 (`.` 포함, TLD 필수) → URL
-  3. localhost 또는 IP 주소 → URL
-  4. 위에 해당하지 않으면 → 검색어
-- 회귀 테스트: 기존 F-03 URL 검증 로직 정상 동작 확인
+#### Phase 2: BookmarkPanel UI 컴포넌트 (✅ 완료)
+- `src/ui/BookmarkPanel.h/.cpp`: 북마크 관리 패널
+  - QListWidget 기반 북마크 목록
+  - 검색 기능 (QLineEdit)
+  - 액션 버튼 (추가, 편집, 삭제, 새 폴더)
+  - 리모컨 키 이벤트 처리 (keyPressEvent)
+  - 토스트 메시지 (QLabel, QTimer)
+- `BookmarkDialog`: 북마크 추가/편집 다이얼로그
+  - 제목, URL, 폴더 선택, 설명 입력
+  - 편집 모드 시 URL 읽기 전용
+- `FolderDialog`: 폴더 추가/편집 다이얼로그
+  - 폴더 이름 입력
+- 스타일: Qt StyleSheet (QSS) 적용
+  - 어두운 배경, 포커스 표시 (3px 파란 테두리)
+  - 대화면 가독성 (폰트 20px 이상)
 
-#### Phase 3: URLBar 수정 (✅ 완료)
-- `src/ui/URLBar.cpp` 수정 (validateAndCompleteUrl 확장)
-- SearchEngine import 추가
-- 검색어 처리 로직 통합:
-  1. isSearchQuery() 확인
-  2. 검색어면 buildSearchUrl() 호출
-  3. 검색 URL을 QUrl로 반환
-  4. WebView에 전달
-- 기존 URL 입력 흐름 유지 (회귀 방지)
+#### Phase 3: BrowserWindow 통합 (✅ 완료)
+- `src/browser/BrowserWindow.h/.cpp`: BookmarkPanel 통합
+  - StorageService, BookmarkService 초기화
+  - BookmarkPanel 생성 (우측 고정, 600px 너비)
+  - 북마크 버튼 클릭 핸들러 (onBookmarkButtonClicked)
+  - 북마크 선택 핸들러 (onBookmarkSelected → WebView 로드)
+  - 현재 페이지 정보 동기화 (URL, 제목)
+- `src/ui/NavigationBar.h/.cpp`: 북마크 버튼 추가
+  - bookmarkButton_ (★ 아이콘)
+  - bookmarkButtonClicked() 시그널
+  - 포커스 순서 업데이트
 
-#### Phase 4: 테스트 작성 (✅ 완료)
-- `tests/unit/SearchEngineTest.cpp` 작성 (152줄, 23개 테스트 케이스)
-  - buildSearchUrl() 테스트 (6개)
-  - getDefaultSearchEngine() 테스트 (2개)
-  - setDefaultSearchEngine() 테스트 (2개)
-  - getAllSearchEngines() 테스트 (1개)
-  - getSearchEngineName() 테스트 (2개)
-  - isSearchQuery() 테스트 (7개)
-- `tests/unit/URLValidatorTest_SearchQuery.cpp` 작성 (76줄, 13개 테스트 케이스)
-  - isSearchQuery() 검색어 인식 테스트 (4개)
-  - URL 우선 처리 테스트 (5개)
-  - 회귀 테스트: 기존 F-03 기능 정상 동작 확인 (4개)
-- `tests/CMakeLists.txt` 업데이트 (테스트 파일 및 SearchEngine.cpp 추가)
+#### CMakeLists.txt 업데이트 (✅ 완료)
+- src/models/Bookmark.h 추가
 
-#### Phase 5: 문서화 및 커밋 (✅ 완료)
-- `docs/components/SearchEngine.md` 작성 (331줄)
-  - API 레퍼런스 (6개 메서드)
-  - 사용 예시 (URLBar, F-11 설정 화면)
-  - 검색 엔진 추가 가이드
-  - 보안 고려사항 (XSS 방지, HTTPS 전용)
-  - 제약사항 및 테스트 가이드
-- `CHANGELOG.md` 업데이트 (v0.3.0 추가)
-- `docs/dev-log.md` 업데이트 (본 로그)
-- Git 커밋:
-  - 구현: `feat(F-09): 검색 엔진 통합 기능 구현`
-  - 테스트: `test(F-09): SearchEngine 및 URLValidator 단위 테스트 추가`
-  - 문서: `docs(F-09): SearchEngine 컴포넌트 문서 작성`
+### 미완료 항목 (Phase 4~7)
 
-### 완료 기준 달성
+#### Phase 4: 폴더 UI 통합 (⏳ 예정)
+- 폴더 항목 표시 (폴더 아이콘 📁)
+- 폴더 클릭 시 하위 북마크 표시
+- 브레드크럼 네비게이션 (루트 > 폴더)
+- 방향키 좌/우로 폴더 탐색
 
-#### AC-1: URL vs 검색어 자동 판단
-- ✅ `google.com` 입력 시 → `https://google.com`로 변환 (URL로 인식)
-- ✅ `youtube` 입력 시 → 검색 URL 생성 (검색어로 인식)
-- ✅ `고양이 동영상` 입력 시 → 검색 URL 생성 (검색어로 인식)
-- ✅ `https://example.com` 입력 시 → URL로 그대로 사용
+#### Phase 5: 리모컨 키 매핑 최적화 (⏳ 예정)
+- 컬러 버튼 매핑 (빨강: 추가, 파랑: 편집, 노랑: 삭제, 초록: 새 폴더)
+- 옵션 버튼으로 컨텍스트 메뉴 열기
+- 포커스 표시 강화
 
-#### AC-2: 검색 URL 생성
-- ✅ Google 선택 시 `https://www.google.com/search?q=검색어` 형식 생성
-- ✅ Naver 선택 시 `https://search.naver.com/search.naver?query=검색어` 형식 생성
-- ✅ 검색어에 공백 포함 시 `%20`으로 인코딩됨
-- ✅ 한글, 영문, 숫자, 특수문자 모두 정상 인코딩됨
+#### Phase 6: 테스트 작성 (⏳ 예정)
+- 단위 테스트 (BookmarkService)
+- 통합 테스트 (BookmarkPanel)
+- 회귀 테스트 (프로젝터 실제 환경)
 
-#### AC-3: 검색 결과 페이지 로드
-- ✅ URLBar에서 검색어 입력 → 확인 버튼 클릭 시 WebView에서 검색 결과 페이지 로드
-- ✅ URLBar에 최종 검색 URL 표시
+#### Phase 7: 코드 리뷰 + 문서화 (⏳ 예정)
+- 코드 리뷰 (코딩 컨벤션 검증)
+- 컴포넌트 문서 작성
+- CHANGELOG.md 업데이트
 
-#### AC-4: 검색 엔진 설정 저장
-- ✅ Qt Settings에 `defaultSearchEngine` 키로 설정 저장
-- ✅ 앱 재시작 후 이전 설정 유지 (예상)
-- ✅ 설정 변경 시 즉시 다음 검색에 반영
+### 기술적 이슈
 
-#### AC-8: 회귀 테스트
-- ✅ 기존 URL 입력 기능 정상 동작 (검색 엔진 통합 후에도 URL 입력 가능)
-- ✅ URLValidator 기존 로직 정상 동작
+#### 1. webOS LS2 API 시뮬레이션
+- **현재**: QTimer로 비동기 동작 모방
+- **향후**: 실제 webOS 환경에서 luna-service2 C API 연동 필요
+- **참고**: webOS Native API 문서 (com.webos.service.db)
 
-### 기술적 성과
-
-#### 1. 정적 클래스 설계
-- 모든 메서드를 static으로 구현하여 인스턴스 생성 불필요
-- QMap을 정적 함수로 래핑하여 초기화 순서 문제 방지
-- 네임스페이스(`webosbrowser`)로 코드 충돌 방지
-
-#### 2. Qt Settings 활용
-- localStorage 대신 Qt Settings 사용으로 Native App 표준 준수
-- 조직명 "LG", 앱명 "webOSBrowser"로 설정
-- 키: `"defaultSearchEngine"`, 값: 검색 엔진 ID
-
-#### 3. URL 인코딩 보안
-- `QUrl::toPercentEncoding()` 사용하여 XSS 방지
-- 한글, 특수문자, 공백 처리 완벽 지원
-- 검증: "고양이 동영상" → "%EA%B3%A0%EC%96%91%EC%9D%B4%20%EB%8F%99%EC%98%81%EC%83%81"
-
-#### 4. 코드 재사용
-- SearchEngine::isSearchQuery()와 URLValidator::isSearchQuery() 동일 로직
-- 두 클래스 모두 독립적으로 사용 가능
-- 명확한 책임 분리 (SearchEngine: 검색 엔진 관리, URLValidator: URL 검증)
-
-#### 5. F-11 연동 준비
-- `getAllSearchEngines()`: 설정 UI용 엔진 목록 제공
-- `getDefaultSearchEngine()`: 현재 선택된 엔진 조회
-- `setDefaultSearchEngine()`: 엔진 변경 API
-
-### 예상 소요 시간 vs 실제 소요 시간
-
-| Phase | 예상 | 실제 | 비고 |
-|-------|------|------|------|
-| Phase 1: SearchEngine 구현 | 2시간 | 1시간 | 정적 클래스로 단순화 |
-| Phase 2: URLValidator 확장 | 1.5시간 | 0.5시간 | 간단한 메서드 추가 |
-| Phase 3: URLBar 수정 | 1시간 | 0.5시간 | 기존 로직 유지 |
-| Phase 4: 테스트 작성 | 2시간 | 1시간 | Google Test 템플릿 사용 |
-| Phase 5: 문서화 및 커밋 | 1시간 | 1시간 | 계획대로 진행 |
-| **총합** | **7.5시간** | **4시간** | 예상보다 빠름 |
+#### 2. Qt WebEngine vs webOS WebView
+- **현재**: QWebEngineView 사용 (표준 Qt)
+- **향후**: webOS 전용 WebView API로 교체 필요 (webOSWebView)
 
 ### 다음 단계
-- F-11 (설정 화면)에서 기본 검색 엔진 선택 UI 구현
-- F-08 (히스토리 관리) 완료 후 검색 히스토리 저장 연동
-- 실제 디바이스(LG 프로젝터)에서 검색 엔진 렌더링 테스트
+1. Phase 4: 폴더 UI 통합 (폴더 아이콘, 브레드크럼)
+2. Phase 5: 리모컨 키 매핑 최적화 (컬러 버튼, 옵션 버튼)
+3. Phase 6: 테스트 작성
+4. Phase 7: 코드 리뷰 + 문서화
 
 ---
 
@@ -1064,166 +1009,3 @@ src/browser/BrowserWindow.h
 src/browser/TabManager.cpp
 src/browser/TabManager.h
 tests/CMakeLists.txt
-
-#### [2026-02-14 18:14] Task: unknown
-- 변경 파일: docs/dev-log.md
-
-#### [2026-02-14 18:20] Task: unknown
-- 변경 파일: docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/requirements.md
-
-#### [2026-02-14 18:32] Task: unknown
-- 변경 파일: docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/requirements.md
-
-#### [2026-02-14 18:41] Task: unknown
-- 변경 파일: docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-
-#### [2026-02-14 18:52] Task: unknown
-- 변경 파일: docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/requirements.md
-
-#### [2026-02-14 18:55] Task: unknown
-- 변경 파일: docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/requirements.md
-
-#### [2026-02-14 19:05] Task: unknown
-- 변경 파일: docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/plan.md
-docs/specs/history-management/requirements.md
-
-#### [2026-02-14 19:09] Task: unknown
-- 변경 파일: docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/plan.md
-docs/specs/history-management/requirements.md
-docs/specs/search-engine-integration/requirements.md
-
-#### [2026-02-14 19:16] Task: unknown
-- 변경 파일: docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/plan.md
-docs/specs/history-management/requirements.md
-docs/specs/search-engine-integration/design.md
-docs/specs/search-engine-integration/requirements.md
-
-#### [2026-02-14 19:22] Task: unknown
-- 변경 파일: docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/plan.md
-docs/specs/history-management/requirements.md
-docs/specs/search-engine-integration/design.md
-docs/specs/search-engine-integration/plan.md
-docs/specs/search-engine-integration/requirements.md
-
-#### [2026-02-14 19:22] Task: unknown
-- 변경 파일: docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/plan.md
-docs/specs/history-management/requirements.md
-docs/specs/search-engine-integration/design.md
-docs/specs/search-engine-integration/plan.md
-docs/specs/search-engine-integration/requirements.md
-
-#### [2026-02-14 19:27] Task: unknown
-- 변경 파일: .gitignore
-docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/plan.md
-docs/specs/history-management/requirements.md
-docs/specs/search-engine-integration/design.md
-docs/specs/search-engine-integration/plan.md
-
-#### [2026-02-14 19:34] Task: unknown
-- 변경 파일: .gitignore
-docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/plan.md
-docs/specs/history-management/requirements.md
-docs/specs/search-engine-integration/design.md
-docs/specs/search-engine-integration/plan.md
-
-#### [2026-02-14 19:34] Task: unknown
-- 변경 파일: .gitignore
-docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/plan.md
-docs/specs/history-management/requirements.md
-docs/specs/search-engine-integration/design.md
-docs/specs/search-engine-integration/plan.md
-
-#### [2026-02-14 19:35] Task: unknown
-- 변경 파일: .gitignore
-docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/plan.md
-docs/specs/history-management/requirements.md
-docs/specs/search-engine-integration/design.md
-docs/specs/search-engine-integration/plan.md
-
-#### [2026-02-14 19:35] Task: unknown
-- 변경 파일: .gitignore
-docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/plan.md
-docs/specs/history-management/requirements.md
-docs/specs/search-engine-integration/design.md
-docs/specs/search-engine-integration/plan.md
-
-#### [2026-02-14 19:35] Task: unknown
-- 변경 파일: .gitignore
-docs/dev-log.md
-docs/project/features.md
-docs/specs/bookmark-management/design.md
-docs/specs/bookmark-management/plan.md
-docs/specs/bookmark-management/requirements.md
-docs/specs/history-management/plan.md
-docs/specs/history-management/requirements.md
-docs/specs/search-engine-integration/design.md
-docs/specs/search-engine-integration/plan.md

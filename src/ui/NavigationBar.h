@@ -73,6 +73,17 @@ private slots:
      */
     void onHomeClicked();
 
+    /**
+     * @brief 북마크 버튼 클릭 핸들러
+     */
+    void onBookmarkClicked();
+
+signals:
+    /**
+     * @brief 북마크 버튼 클릭 시그널
+     */
+    void bookmarkButtonClicked();
+
 private:
     /**
      * @brief UI 초기화 (버튼 생성, 레이아웃 설정)
@@ -101,6 +112,7 @@ private:
     QPushButton *forwardButton_;    ///< 앞으로 버튼
     QPushButton *reloadButton_;     ///< 새로고침 버튼
     QPushButton *homeButton_;       ///< 홈 버튼
+    QPushButton *bookmarkButton_;   ///< 북마크 버튼
 
     // 데이터
     WebView *webView_;              ///< WebView 인스턴스 (약한 참조)
