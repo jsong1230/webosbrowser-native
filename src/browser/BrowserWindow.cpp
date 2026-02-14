@@ -19,6 +19,7 @@
 #include "../services/DownloadManager.h"
 #include "../utils/Logger.h"
 #include "../utils/SecurityClassifier.h"
+#include "../utils/KeyCodeConstants.h"
 #include <QDebug>
 #include <QApplication>
 #include <QScreen>
@@ -28,6 +29,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QCheckBox>
+#include <QDateTime>
 
 namespace webosbrowser {
 
@@ -246,11 +248,33 @@ void BrowserWindow::setupConnections() {
         connect(historyPanel_, &HistoryPanel::historySelected, this, &BrowserWindow::onHistorySelected);
     }
 
-    // DownloadManager 시그널 연결
+    // DownloadManager 시그널 연결 (F-12)
     if (downloadManager_) {
         connect(downloadManager_, &DownloadManager::downloadCompleted,
                 this, &BrowserWindow::onDownloadCompleted);
     }
+
+    // TabManager 시그널 연결 (F-13: 리모컨 단축키)
+    connect(tabManager_, &TabManager::tabSwitched, this, [this](int index, const QString& url, const QString& title) {
+        // URLBar 업데이트
+        urlBar_->setText(url);
+
+        // NavigationBar 상태 업데이트
+        navigationBar_->updateTitle(title);
+
+        // WebView 포커스
+        webView_->setFocus();
+
+        Logger::info(QString("[BrowserWindow] 탭 %1 활성화: %2").arg(index + 1).arg(title));
+    });
+
+    connect(tabManager_, &TabManager::tabCreated, this, [this](int index) {
+        Logger::info(QString("[BrowserWindow] 탭 %1 생성됨").arg(index + 1));
+    });
+
+    connect(tabManager_, &TabManager::tabClosed, this, [this](int index) {
+        Logger::info(QString("[BrowserWindow] 탭 %1 닫힘").arg(index + 1));
+    });
 
     qDebug() << "BrowserWindow: 시그널/슬롯 연결 완료";
 }
@@ -534,6 +558,240 @@ void BrowserWindow::onDownloadCompleted(const DownloadItem& item)
 
     // 토스트 알림은 DownloadPanel에서 처리
     // 여기서는 추가 작업 (예: 상태바 업데이트)만 수행
+}
+
+// ============================================================================
+// 리모컨 단축키 처리 (F-13)
+// ============================================================================
+
+void BrowserWindow::keyPressEvent(QKeyEvent *event) {
+    int keyCode = event->key();
+
+    // 로깅 (디버깅용)
+    Logger::debug(QString("[BrowserWindow] 키 입력: keyCode=%1").arg(keyCode));
+
+    // 1. URLBar 포커스 체크 (숫자 키, 채널 버튼 무시)
+    if (urlBar_->hasFocus()) {
+        // 숫자 키는 URLBar로 전달 (탭 전환 안 함)
+        if (keyCode >= 49 && keyCode <= 53) {  // NUM_1~5
+            event->ignore();
+            return;
+        }
+        // 채널 버튼도 URLBar 입력 중에는 무시
+        if (keyCode == 427 || keyCode == 428) {  // CHANNEL_UP/DOWN
+            event->ignore();
+            return;
+        }
+        // 컬러 버튼, 설정 버튼은 처리 계속 (패널 열기 허용)
+    }
+
+    // 2. 패널 열림 체크 (패널 내부 키 이벤트 우선)
+    if (bookmarkPanel_ && bookmarkPanel_->isVisible() && bookmarkPanel_->hasFocus()) {
+        // Back 키만 처리 (패널 닫기)
+        if (keyCode == 27) {  // BACK
+            bookmarkPanel_->hide();
+            webView_->setFocus();
+            event->accept();
+            return;
+        }
+        event->ignore();  // 패널에서 처리
+        return;
+    }
+
+    if (historyPanel_ && historyPanel_->isVisible() && historyPanel_->hasFocus()) {
+        // Back 키만 처리 (패널 닫기)
+        if (keyCode == 27) {  // BACK
+            historyPanel_->hide();
+            webView_->setFocus();
+            event->accept();
+            return;
+        }
+        event->ignore();  // 패널에서 처리
+        return;
+    }
+
+    // 3. 디바운스 체크
+    if (shouldDebounce(keyCode)) {
+        Logger::debug(QString("[BrowserWindow] 디바운스: keyCode=%1 무시").arg(keyCode));
+        event->accept();
+        return;
+    }
+
+    // 4. 키 매핑 처리
+    // 채널 버튼
+    if (keyCode == 427 || keyCode == 428) {  // CHANNEL_UP/DOWN
+        handleChannelButton(keyCode);
+        event->accept();
+    }
+    // 컬러 버튼
+    else if (keyCode == 403 || keyCode == 405 || keyCode == 406 || keyCode == 407) {  // RED/GREEN/YELLOW/BLUE
+        handleColorButton(keyCode);
+        event->accept();
+    }
+    // 숫자 버튼
+    else if (keyCode >= 49 && keyCode <= 53) {  // NUM_1~5
+        handleNumberButton(keyCode);
+        event->accept();
+    }
+    // 설정 버튼
+    else if (keyCode == 457 || keyCode == 18) {  // MENU/SETTINGS
+        handleMenuButton(keyCode);
+        event->accept();
+    }
+    // 재생 버튼 (M3 이후)
+    // else if (keyCode == 415 || keyCode == 19 || keyCode == 417 || keyCode == 412) {
+    //     handlePlaybackButton(keyCode);
+    //     event->accept();
+    // }
+    // 기본 처리 (Qt 기본 동작)
+    else {
+        QMainWindow::keyPressEvent(event);
+    }
+}
+
+bool BrowserWindow::shouldDebounce(int keyCode) {
+    qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+
+    if (lastKeyPressTime_.contains(keyCode)) {
+        qint64 lastTime = lastKeyPressTime_[keyCode];
+        if (currentTime - lastTime < DEBOUNCE_MS) {
+            return true;  // 중복 입력
+        }
+    }
+
+    lastKeyPressTime_[keyCode] = currentTime;
+    return false;  // 처리 허용
+}
+
+void BrowserWindow::handleChannelButton(int keyCode) {
+    using namespace KeyCode;
+
+    // 탭이 1개 이하면 전환 무시
+    if (tabManager_->getTabCount() <= 1) {
+        Logger::debug("[BrowserWindow] 탭이 1개뿐이므로 전환 무시");
+        return;
+    }
+
+    bool success = false;
+    if (keyCode == CHANNEL_UP) {
+        success = tabManager_->previousTab();
+        Logger::info("[BrowserWindow] Channel Up → 이전 탭");
+    } else if (keyCode == CHANNEL_DOWN) {
+        success = tabManager_->nextTab();
+        Logger::info("[BrowserWindow] Channel Down → 다음 탭");
+    }
+
+    if (success) {
+        Logger::info("[BrowserWindow] 탭 전환 완료");
+    } else {
+        Logger::warning("[BrowserWindow] 탭 전환 실패");
+    }
+}
+
+void BrowserWindow::handleColorButton(int keyCode) {
+    using namespace KeyCode;
+
+    switch (keyCode) {
+        case RED:
+            // 북마크 패널 열기
+            if (bookmarkPanel_ && !bookmarkPanel_->isVisible()) {
+                bookmarkPanel_->show();
+                bookmarkPanel_->setFocus();
+                Logger::info("[BrowserWindow] Red 버튼 → 북마크 패널 열림");
+            } else {
+                Logger::debug("[BrowserWindow] 북마크 패널 이미 열려있음");
+            }
+            break;
+
+        case GREEN:
+            // 히스토리 패널 열기
+            if (historyPanel_ && !historyPanel_->isVisible()) {
+                historyPanel_->show();
+                historyPanel_->setFocus();
+                Logger::info("[BrowserWindow] Green 버튼 → 히스토리 패널 열림");
+            } else {
+                Logger::debug("[BrowserWindow] 히스토리 패널 이미 열려있음");
+            }
+            break;
+
+        case YELLOW:
+            // 다운로드 패널 열기 (F-12 + F-13 통합)
+            if (downloadPanel_ && !downloadPanel_->isVisible()) {
+                downloadPanel_->show();
+                downloadPanel_->setFocus();
+                Logger::info("[BrowserWindow] Yellow 버튼 → 다운로드 패널 열림");
+            } else {
+                Logger::debug("[BrowserWindow] 다운로드 패널 이미 열려있음");
+            }
+            break;
+
+        case BLUE:
+            // 새 탭 생성
+            if (tabManager_->getTabCount() >= 5) {
+                Logger::warning("[BrowserWindow] Blue 버튼 → 새 탭 생성 실패: 최대 5개");
+                // TODO: 선택적으로 QMessageBox 경고 표시
+            } else {
+                bool success = tabManager_->createTab();
+                if (success) {
+                    Logger::info("[BrowserWindow] Blue 버튼 → 새 탭 생성 완료");
+                } else {
+                    Logger::warning("[BrowserWindow] Blue 버튼 → 새 탭 생성 실패");
+                }
+            }
+            break;
+
+        default:
+            Logger::warning(QString("[BrowserWindow] 알 수 없는 컬러 버튼: %1").arg(keyCode));
+    }
+}
+
+void BrowserWindow::handleNumberButton(int keyCode) {
+    using namespace KeyCode;
+
+    // 탭 인덱스 계산 (1~5 → 0~4)
+    int tabIndex = keyCode - NUM_1;
+
+    // 탭 존재 여부 체크
+    if (tabIndex >= tabManager_->getTabCount()) {
+        Logger::debug(QString("[BrowserWindow] 존재하지 않는 탭 번호: %1").arg(tabIndex + 1));
+        return;
+    }
+
+    // 이미 활성화된 탭 체크
+    if (tabIndex == tabManager_->getCurrentTabIndex()) {
+        Logger::debug(QString("[BrowserWindow] 이미 활성화된 탭: %1").arg(tabIndex + 1));
+        return;
+    }
+
+    // 탭 전환
+    bool success = tabManager_->switchToTab(tabIndex);
+    if (success) {
+        Logger::info(QString("[BrowserWindow] 숫자 %1 버튼 → 탭 %1로 전환 완료")
+                         .arg(tabIndex + 1));
+    } else {
+        Logger::warning(QString("[BrowserWindow] 탭 %1 전환 실패").arg(tabIndex + 1));
+    }
+}
+
+void BrowserWindow::handleMenuButton(int keyCode) {
+    Q_UNUSED(keyCode);
+
+    // 설정 패널 열기 (F-11 구현 시)
+    // if (settingsPanel_ && !settingsPanel_->isVisible()) {
+    //     settingsPanel_->show();
+    //     settingsPanel_->setFocus();
+    //     Logger::info("[BrowserWindow] Menu 버튼 → 설정 패널 열림");
+    // } else {
+    //     Logger::debug("[BrowserWindow] 설정 패널 이미 열려있음");
+    // }
+
+    Logger::info("[BrowserWindow] Menu 버튼 → 설정 패널 (F-11 미구현)");
+}
+
+void BrowserWindow::handlePlaybackButton(int keyCode) {
+    // M3 이후 구현 예정
+    Logger::debug(QString("[BrowserWindow] handlePlaybackButton: keyCode=%1").arg(keyCode));
+    Q_UNUSED(keyCode);
 }
 
 } // namespace webosbrowser
