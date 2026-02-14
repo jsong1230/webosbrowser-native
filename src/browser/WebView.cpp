@@ -4,8 +4,11 @@
  */
 
 #include "WebView.h"
+#include "../services/DownloadManager.h"
 #include <QWebEngineView>
 #include <QWebEnginePage>
+#include <QWebEngineProfile>
+#include <QWebEngineDownloadItem>
 #include <QVBoxLayout>
 #include <QTimer>
 #include <QDebug>
@@ -55,6 +58,12 @@ public:
      * @param newState 새 상태
      */
     void setLoadingState(LoadingState newState);
+
+    /**
+     * @brief 다운로드 핸들러 설정 (WebViewPrivate)
+     * @param downloadManager 다운로드 관리자
+     */
+    void setupDownloadHandler(DownloadManager* downloadManager);
 };
 
 void WebViewPrivate::setupConnections() {
@@ -119,6 +128,25 @@ void WebViewPrivate::setLoadingState(LoadingState newState) {
         loadingState = newState;
         qDebug() << "WebView: 상태 변경 -" << static_cast<int>(newState);
     }
+}
+
+void WebViewPrivate::setupDownloadHandler(DownloadManager* downloadManager) {
+    if (!downloadManager) {
+        qWarning() << "WebView: DownloadManager가 null입니다";
+        return;
+    }
+
+    // QWebEngineProfile 가져오기
+    QWebEngineProfile* profile = webEngineView->page()->profile();
+
+    // downloadRequested 시그널 연결
+    QObject::connect(profile, &QWebEngineProfile::downloadRequested,
+                     [downloadManager](QWebEngineDownloadItem* downloadItem) {
+        qDebug() << "WebView: 다운로드 요청 -" << downloadItem->url().toString();
+        downloadManager->startDownload(downloadItem);
+    });
+
+    qDebug() << "WebView: 다운로드 핸들러 설정 완료";
 }
 
 // WebView 구현
@@ -223,6 +251,11 @@ LoadingState WebView::loadingState() const {
 int WebView::loadProgress() const {
     Q_D(const WebView);
     return d->currentProgress;
+}
+
+void WebView::setupDownloadHandler(DownloadManager* downloadManager) {
+    Q_D(WebView);
+    d->setupDownloadHandler(downloadManager);
 }
 
 } // namespace webosbrowser

@@ -26,6 +26,8 @@ class BookmarkService;
 class HistoryService;
 class HistoryPanel;
 class ErrorPage;
+class DownloadManager;
+class DownloadPanel;
 
 /**
  * @class BrowserWindow
@@ -52,6 +54,21 @@ public:
     // 복사 생성자 및 대입 연산자 삭제 (QObject 규칙)
     BrowserWindow(const BrowserWindow&) = delete;
     BrowserWindow& operator=(const BrowserWindow&) = delete;
+
+    /**
+     * @brief 다운로드 패널 표시
+     */
+    void showDownloadPanel();
+
+    /**
+     * @brief 다운로드 패널 숨김
+     */
+    void hideDownloadPanel();
+
+    /**
+     * @brief 다운로드 패널 토글
+     */
+    void toggleDownloadPanel();
 
 private:
     /**
@@ -127,6 +144,12 @@ private slots:
      */
     void onWarningTimerTimeout();
 
+    /**
+     * @brief 다운로드 완료 알림
+     * @param item 완료된 다운로드 항목
+     */
+    void onDownloadCompleted(const DownloadItem& item);
+
 private:
     /**
      * @brief HTTP 경고 필요 여부 체크 및 타이머 시작
@@ -155,12 +178,14 @@ private:
     QLabel *statusLabel_;            ///< 상태 라벨 (하단)
     BookmarkPanel *bookmarkPanel_;   ///< 북마크 패널
     HistoryPanel *historyPanel_;     ///< 히스토리 패널 (오버레이)
+    DownloadPanel *downloadPanel_;   ///< 다운로드 패널
 
     // 서비스
     TabManager *tabManager_;         ///< 탭 관리자
     StorageService *storageService_; ///< 스토리지 서비스
     BookmarkService *bookmarkService_; ///< 북마크 서비스
     HistoryService *historyService_; ///< 히스토리 서비스
+    DownloadManager *downloadManager_; ///< 다운로드 관리자
 
     // 현재 페이지 정보
     QString currentUrl_;             ///< 현재 URL

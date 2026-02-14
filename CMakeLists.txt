@@ -33,10 +33,12 @@ set(SOURCES
     src/ui/BookmarkPanel.cpp
     src/ui/HistoryPanel.cpp
     src/ui/SecurityIndicator.cpp
+    src/ui/DownloadPanel.cpp
     src/services/BookmarkService.cpp
     src/services/HistoryService.cpp
     src/services/StorageService.cpp
     src/services/SearchEngine.cpp
+    src/services/DownloadManager.cpp
     src/utils/Logger.cpp
     src/utils/URLValidator.cpp
     src/utils/DateFormatter.cpp
@@ -55,11 +57,13 @@ set(HEADERS
     src/ui/BookmarkPanel.h
     src/ui/HistoryPanel.h
     src/ui/SecurityIndicator.h
+    src/ui/DownloadPanel.h
     src/models/Bookmark.h
     src/services/BookmarkService.h
     src/services/HistoryService.h
     src/services/StorageService.h
     src/services/SearchEngine.h
+    src/services/DownloadManager.h
     src/utils/Logger.h
     src/utils/URLValidator.h
     src/utils/DateFormatter.h

@@ -12,9 +12,11 @@
 #include "../ui/HistoryPanel.h"
 #include "../ui/BookmarkPanel.h"
 #include "../ui/ErrorPage.h"
+#include "../ui/DownloadPanel.h"
 #include "../services/StorageService.h"
 #include "../services/HistoryService.h"
 #include "../services/BookmarkService.h"
+#include "../services/DownloadManager.h"
 #include "../utils/Logger.h"
 #include "../utils/SecurityClassifier.h"
 #include <QDebug>
@@ -43,10 +45,12 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     , statusLabel_(new QLabel("준비", this))
     , bookmarkPanel_(nullptr)
     , historyPanel_(nullptr)
+    , downloadPanel_(nullptr)
     , tabManager_(new TabManager(this))
     , storageService_(new StorageService(this))
     , bookmarkService_(nullptr)
     , historyService_(nullptr)
+    , downloadManager_(nullptr)
     , currentUrl_("")
     , currentTitle_("")
     , warningTimer_(new QTimer(this))
@@ -80,6 +84,20 @@ BrowserWindow::BrowserWindow(QWidget *parent)
         width() - 600, 0,  // 우측 정렬
         600, height()
     );
+
+    // 다운로드 관리자 생성
+    downloadManager_ = new DownloadManager(this);
+
+    // 다운로드 패널 생성
+    downloadPanel_ = new DownloadPanel(downloadManager_, this);
+    downloadPanel_->setGeometry(
+        (width() - 800) / 2, height() - 500,  // 중앙 하단
+        800, 450
+    );
+    downloadPanel_->hide();  // 초기 숨김
+
+    // WebView에 다운로드 핸들러 설정
+    webView_->setupDownloadHandler(downloadManager_);
 
     setupUI();
     setupConnections();
@@ -226,6 +244,12 @@ void BrowserWindow::setupConnections() {
     // HistoryPanel 시그널 연결
     if (historyPanel_) {
         connect(historyPanel_, &HistoryPanel::historySelected, this, &BrowserWindow::onHistorySelected);
+    }
+
+    // DownloadManager 시그널 연결
+    if (downloadManager_) {
+        connect(downloadManager_, &DownloadManager::downloadCompleted,
+                this, &BrowserWindow::onDownloadCompleted);
     }
 
     qDebug() << "BrowserWindow: 시그널/슬롯 연결 완료";
@@ -469,6 +493,47 @@ bool BrowserWindow::showSecurityWarningDialog(const QUrl &url) {
         webView_->goBack();
         return false;
     }
+}
+
+// [F-12] 다운로드 관리 기능
+
+void BrowserWindow::showDownloadPanel()
+{
+    if (downloadPanel_) {
+        downloadPanel_->show();
+        downloadPanel_->raise();  // 최상단으로
+        qDebug() << "BrowserWindow: 다운로드 패널 표시";
+    }
+}
+
+void BrowserWindow::hideDownloadPanel()
+{
+    if (downloadPanel_) {
+        downloadPanel_->hide();
+        qDebug() << "BrowserWindow: 다운로드 패널 숨김";
+    }
+}
+
+void BrowserWindow::toggleDownloadPanel()
+{
+    if (downloadPanel_) {
+        if (downloadPanel_->isVisible()) {
+            hideDownloadPanel();
+        } else {
+            showDownloadPanel();
+        }
+    }
+}
+
+void BrowserWindow::onDownloadCompleted(const DownloadItem& item)
+{
+    qDebug() << "BrowserWindow: 다운로드 완료 알림 -" << item.fileName;
+
+    // StatusLabel 업데이트
+    statusLabel_->setText("다운로드 완료: " + item.fileName);
+
+    // 토스트 알림은 DownloadPanel에서 처리
+    // 여기서는 추가 작업 (예: 상태바 업데이트)만 수행
 }
 
 } // namespace webosbrowser

@@ -25,6 +25,7 @@ enum class LoadingState {
 
 // Forward declaration
 class WebViewPrivate;
+class DownloadManager;
 
 /**
  * @class WebView
@@ -119,6 +120,12 @@ public:
      * @return 진행률 (0~100)
      */
     int loadProgress() const;
+
+    /**
+     * @brief 다운로드 핸들러 설정
+     * @param downloadManager 다운로드 관리자
+     */
+    void setupDownloadHandler(DownloadManager* downloadManager);
 
 signals:
     /**
