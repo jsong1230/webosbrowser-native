@@ -28,6 +28,7 @@ set(SOURCES
     src/browser/TabManager.cpp
     src/ui/URLBar.cpp
     src/ui/NavigationBar.cpp
+    src/ui/LoadingIndicator.cpp
     src/ui/BookmarkPanel.cpp
     src/services/BookmarkService.cpp
     src/services/HistoryService.cpp
@@ -43,6 +44,7 @@ set(HEADERS
     src/browser/TabManager.h
     src/ui/URLBar.h
     src/ui/NavigationBar.h
+    src/ui/LoadingIndicator.h
     src/ui/BookmarkPanel.h
     src/services/BookmarkService.h
     src/services/HistoryService.h

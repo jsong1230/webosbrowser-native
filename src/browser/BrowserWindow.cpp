@@ -7,6 +7,7 @@
 #include "WebView.h"
 #include "../ui/URLBar.h"
 #include "../ui/NavigationBar.h"
+#include "../ui/LoadingIndicator.h"
 #include <QDebug>
 #include <QApplication>
 #include <QScreen>
@@ -21,6 +22,7 @@ BrowserWindow::BrowserWindow(QWidget *parent)
     , mainLayout_(new QVBoxLayout(centralWidget_))
     , urlBar_(new URLBar(centralWidget_))
     , navigationBar_(new NavigationBar(centralWidget_))
+    , loadingIndicator_(new LoadingIndicator(centralWidget_))
     , webView_(new WebView(centralWidget_))
     , statusLabel_(new QLabel("준비", this))
 {
@@ -54,6 +56,9 @@ void BrowserWindow::setupUI() {
     // NavigationBar 추가 (URLBar 아래)
     mainLayout_->addWidget(navigationBar_);
 
+    // LoadingIndicator 추가 (NavigationBar 아래, 얇은 프로그레스바)
+    mainLayout_->addWidget(loadingIndicator_);
+
     // WebView 추가 (중간, stretch=1로 남은 공간 모두 차지)
     mainLayout_->addWidget(webView_, 1);
 
@@ -80,6 +85,11 @@ void BrowserWindow::setupConnections() {
     // URLBar → WebView 연결
     connect(urlBar_, &URLBar::urlSubmitted, webView_,
             static_cast<void(WebView::*)(const QUrl&)>(&WebView::load));
+
+    // WebView → LoadingIndicator 연결
+    connect(webView_, &WebView::loadStarted, loadingIndicator_, &LoadingIndicator::startLoading);
+    connect(webView_, &WebView::loadProgress, loadingIndicator_, &LoadingIndicator::setProgress);
+    connect(webView_, &WebView::loadFinished, loadingIndicator_, &LoadingIndicator::finishLoading);
 
     // WebView 로딩 시작 이벤트
     connect(webView_, &WebView::loadStarted, this, [this]() {
