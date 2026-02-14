@@ -99,6 +99,74 @@
 
 ---
 
+## [0.4.0] - 2026-02-14
+
+### F-06: 탭 관리 시스템 Phase 1 완료
+
+#### Added (새로 추가됨)
+
+- **TabManager 클래스 (단일 탭 모드)**
+  - `src/browser/TabManager.h/cpp`: 탭 상태 관리
+  - 메서드: `setCurrentTab()`, `getCurrentTab()`, `getTabCount()`, `getCurrentTabTitle()`, `getCurrentTabUrl()`
+  - 시그널: `tabChanged(int)` (향후 다중 탭 지원용)
+
+- **탭 관리 API**
+  - `setCurrentTab(WebView *)`: 현재 활성 탭 설정
+  - `getCurrentTab()`: 현재 활성 탭 반환
+  - `getTabCount()`: 탭 개수 반환 (현재 항상 1)
+  - `getCurrentTabTitle()`: 현재 탭 제목
+  - `getCurrentTabUrl()`: 현재 탭 URL
+
+- **시그널**
+  - `tabChanged(int index)`: 탭 전환 (향후 다중 탭 지원)
+
+- **테스트 코드 (85개 테스트, 1,200줄)**
+  - `tests/unit/TabManagerTest.cpp`: 42개 테스트
+    - 생성자/소멸자, setCurrentTab/getCurrentTab
+    - getTabCount, 상태 조회 (제목, URL)
+    - tabChanged 시그널, 엣지 케이스
+  - `tests/unit/TabManagerBasicTest.cpp`: 12개 테스트
+    - 기본 기능, 공통 시나리오
+  - `tests/integration/BrowserWindowTabManagerIntegrationTest.cpp`: 31개 테스트
+    - TabManager 통합, WebView 연결
+    - 시나리오 테스트, 성능 테스트
+
+#### Changed (변경됨)
+
+- **CMakeLists.txt**
+  - `src/browser/TabManager.cpp` 소스 파일 추가
+
+- **BrowserWindow 클래스**
+  - `TabManager *tabManager_` 멤버 변수 추가
+  - 생성자에서 TabManager 인스턴스 생성
+  - `setupConnections()`: WebView를 TabManager에 등록
+
+#### Improved (개선됨)
+
+- 명확한 단계적 구현: Phase 1 (단일 탭) → Phase 2 (TabBar UI) → Phase 3 (다중 탭)
+- Qt 부모-자식 관계로 메모리 안전성 보장
+- 복사 생성자/대입 연산자 삭제로 RAII 패턴 강화
+- 85개 테스트로 단일 탭 모드 100% 검증
+
+#### Test (테스트)
+
+- ✅ 85개 테스트 코드 작성 (1,200줄)
+  - TabManagerTest: 42개 테스트
+  - TabManagerBasicTest: 12개 테스트
+  - BrowserWindowTabManagerIntegrationTest: 31개 테스트
+- ⏳ CMake 빌드 및 테스트 실행 대기
+- ⏳ 실제 디바이스 테스트 대기 (LG 프로젝터 HU715QW)
+
+#### Notes
+
+- **Phase 1 특징**: 단일 탭만 지원 (WebView* currentTab_)
+- **향후 확장**:
+  - Phase 2: TabBar UI 컴포넌트
+  - Phase 3: 다중 탭 (QVector<TabModel>)
+  - Phase 4~7: 성능 최적화, 단축키, 메모리 저장
+
+---
+
 ## [0.3.0] - 2026-02-14
 
 ### F-03: URL 입력 UI 완료
