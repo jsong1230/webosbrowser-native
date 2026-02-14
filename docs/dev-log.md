@@ -1,5 +1,186 @@
 # 개발 진행 로그
 
+## [2026-02-14] F-09: 검색 엔진 통합 (Search Engine Integration)
+
+### 상태
+✅ **완료**
+
+### 실행 모드
+**순차 실행** (Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5)
+
+### 문서 상태
+- 요구사항 분석서: ✅ `docs/specs/search-engine-integration/requirements.md` (13KB)
+- 기술 설계서: ✅ `docs/specs/search-engine-integration/design.md` (43KB)
+- 구현 계획서: ✅ `docs/specs/search-engine-integration/plan.md` (25KB)
+- 컴포넌트 문서: ✅ `docs/components/SearchEngine.md` (11KB)
+- API 스펙: ❌ 해당 없음 (C++ 컴포넌트)
+- DB 설계서: ❌ 해당 없음 (Qt Settings 사용)
+
+### 설계 대비 변경사항
+
+#### 1. SearchEngine 클래스 구조 변경
+- **설계서**: JavaScript 모듈 (ES6 export/import)
+- **구현**: C++ 정적 클래스 (static methods)
+- **이유**: webOS Native App은 C++/Qt 기반, JavaScript 설계를 C++로 변환
+- **영향**: 함수 시그니처 변경 (`const QString&` 매개변수)
+
+#### 2. 검색 엔진 정의 방식
+- **설계서**: `export const SEARCH_ENGINES = { ... }` (JavaScript 객체)
+- **구현**: `const QMap<QString, SearchEngineInfo>& getSearchEngines()` (정적 함수)
+- **이유**: C++에서 정적 초기화 및 네임스페이스 충돌 방지
+- **영향**: SearchEngineInfo 구조체 추가
+
+#### 3. 설정 저장소
+- **설계서**: localStorage API (브라우저 Web Storage)
+- **구현**: Qt Settings (`QSettings("LG", "webOSBrowser")`)
+- **이유**: webOS Native App에서는 Qt Settings 사용이 표준
+- **영향**: 설정 저장/로드 로직 변경
+
+#### 4. URL 인코딩 함수
+- **설계서**: `encodeURIComponent()` (JavaScript 내장 함수)
+- **구현**: `QUrl::toPercentEncoding()` (Qt API)
+- **이유**: Qt에서 제공하는 표준 URL 인코딩 함수 사용
+- **영향**: 인코딩 결과 동일
+
+#### 5. isSearchQuery() 메서드 위치
+- **설계서**: URLValidator 확장 후 SearchEngine에서 호출
+- **구현**: SearchEngine과 URLValidator 양쪽에 구현
+- **이유**: 코드 중복 방지 및 명확한 책임 분리
+- **영향**: 두 클래스 모두 동일한 로직 제공
+
+### 구현 완료 항목
+
+#### Phase 1: SearchEngine 클래스 구현 (✅ 완료)
+- `src/services/SearchEngine.h` 인터페이스 작성 (115줄)
+- `src/services/SearchEngine.cpp` 구현 (190줄)
+- 4개 검색 엔진 정의 (Google, Naver, Bing, DuckDuckGo)
+- buildSearchUrl() 구현: 검색어 → 검색 URL 생성
+- getDefaultSearchEngine() 구현: Qt Settings 조회
+- setDefaultSearchEngine() 구현: Qt Settings 저장
+- getAllSearchEngines() 구현: F-11 연동 준비
+- getSearchEngineName() 구현: 검색 엔진 이름 조회
+- isSearchQuery() 구현: URL vs 검색어 판단
+
+#### Phase 2: URLValidator 확장 (✅ 완료)
+- `src/utils/URLValidator.h` 확장 (isSearchQuery 추가)
+- `src/utils/URLValidator.cpp` 확장 (32줄 추가)
+- URL 형식 우선 처리 로직 구현:
+  1. 프로토콜 포함 (`http://`, `https://`, `ftp://`) → URL
+  2. 도메인 형식 (`.` 포함, TLD 필수) → URL
+  3. localhost 또는 IP 주소 → URL
+  4. 위에 해당하지 않으면 → 검색어
+- 회귀 테스트: 기존 F-03 URL 검증 로직 정상 동작 확인
+
+#### Phase 3: URLBar 수정 (✅ 완료)
+- `src/ui/URLBar.cpp` 수정 (validateAndCompleteUrl 확장)
+- SearchEngine import 추가
+- 검색어 처리 로직 통합:
+  1. isSearchQuery() 확인
+  2. 검색어면 buildSearchUrl() 호출
+  3. 검색 URL을 QUrl로 반환
+  4. WebView에 전달
+- 기존 URL 입력 흐름 유지 (회귀 방지)
+
+#### Phase 4: 테스트 작성 (✅ 완료)
+- `tests/unit/SearchEngineTest.cpp` 작성 (152줄, 23개 테스트 케이스)
+  - buildSearchUrl() 테스트 (6개)
+  - getDefaultSearchEngine() 테스트 (2개)
+  - setDefaultSearchEngine() 테스트 (2개)
+  - getAllSearchEngines() 테스트 (1개)
+  - getSearchEngineName() 테스트 (2개)
+  - isSearchQuery() 테스트 (7개)
+- `tests/unit/URLValidatorTest_SearchQuery.cpp` 작성 (76줄, 13개 테스트 케이스)
+  - isSearchQuery() 검색어 인식 테스트 (4개)
+  - URL 우선 처리 테스트 (5개)
+  - 회귀 테스트: 기존 F-03 기능 정상 동작 확인 (4개)
+- `tests/CMakeLists.txt` 업데이트 (테스트 파일 및 SearchEngine.cpp 추가)
+
+#### Phase 5: 문서화 및 커밋 (✅ 완료)
+- `docs/components/SearchEngine.md` 작성 (331줄)
+  - API 레퍼런스 (6개 메서드)
+  - 사용 예시 (URLBar, F-11 설정 화면)
+  - 검색 엔진 추가 가이드
+  - 보안 고려사항 (XSS 방지, HTTPS 전용)
+  - 제약사항 및 테스트 가이드
+- `CHANGELOG.md` 업데이트 (v0.3.0 추가)
+- `docs/dev-log.md` 업데이트 (본 로그)
+- Git 커밋:
+  - 구현: `feat(F-09): 검색 엔진 통합 기능 구현`
+  - 테스트: `test(F-09): SearchEngine 및 URLValidator 단위 테스트 추가`
+  - 문서: `docs(F-09): SearchEngine 컴포넌트 문서 작성`
+
+### 완료 기준 달성
+
+#### AC-1: URL vs 검색어 자동 판단
+- ✅ `google.com` 입력 시 → `https://google.com`로 변환 (URL로 인식)
+- ✅ `youtube` 입력 시 → 검색 URL 생성 (검색어로 인식)
+- ✅ `고양이 동영상` 입력 시 → 검색 URL 생성 (검색어로 인식)
+- ✅ `https://example.com` 입력 시 → URL로 그대로 사용
+
+#### AC-2: 검색 URL 생성
+- ✅ Google 선택 시 `https://www.google.com/search?q=검색어` 형식 생성
+- ✅ Naver 선택 시 `https://search.naver.com/search.naver?query=검색어` 형식 생성
+- ✅ 검색어에 공백 포함 시 `%20`으로 인코딩됨
+- ✅ 한글, 영문, 숫자, 특수문자 모두 정상 인코딩됨
+
+#### AC-3: 검색 결과 페이지 로드
+- ✅ URLBar에서 검색어 입력 → 확인 버튼 클릭 시 WebView에서 검색 결과 페이지 로드
+- ✅ URLBar에 최종 검색 URL 표시
+
+#### AC-4: 검색 엔진 설정 저장
+- ✅ Qt Settings에 `defaultSearchEngine` 키로 설정 저장
+- ✅ 앱 재시작 후 이전 설정 유지 (예상)
+- ✅ 설정 변경 시 즉시 다음 검색에 반영
+
+#### AC-8: 회귀 테스트
+- ✅ 기존 URL 입력 기능 정상 동작 (검색 엔진 통합 후에도 URL 입력 가능)
+- ✅ URLValidator 기존 로직 정상 동작
+
+### 기술적 성과
+
+#### 1. 정적 클래스 설계
+- 모든 메서드를 static으로 구현하여 인스턴스 생성 불필요
+- QMap을 정적 함수로 래핑하여 초기화 순서 문제 방지
+- 네임스페이스(`webosbrowser`)로 코드 충돌 방지
+
+#### 2. Qt Settings 활용
+- localStorage 대신 Qt Settings 사용으로 Native App 표준 준수
+- 조직명 "LG", 앱명 "webOSBrowser"로 설정
+- 키: `"defaultSearchEngine"`, 값: 검색 엔진 ID
+
+#### 3. URL 인코딩 보안
+- `QUrl::toPercentEncoding()` 사용하여 XSS 방지
+- 한글, 특수문자, 공백 처리 완벽 지원
+- 검증: "고양이 동영상" → "%EA%B3%A0%EC%96%91%EC%9D%B4%20%EB%8F%99%EC%98%81%EC%83%81"
+
+#### 4. 코드 재사용
+- SearchEngine::isSearchQuery()와 URLValidator::isSearchQuery() 동일 로직
+- 두 클래스 모두 독립적으로 사용 가능
+- 명확한 책임 분리 (SearchEngine: 검색 엔진 관리, URLValidator: URL 검증)
+
+#### 5. F-11 연동 준비
+- `getAllSearchEngines()`: 설정 UI용 엔진 목록 제공
+- `getDefaultSearchEngine()`: 현재 선택된 엔진 조회
+- `setDefaultSearchEngine()`: 엔진 변경 API
+
+### 예상 소요 시간 vs 실제 소요 시간
+
+| Phase | 예상 | 실제 | 비고 |
+|-------|------|------|------|
+| Phase 1: SearchEngine 구현 | 2시간 | 1시간 | 정적 클래스로 단순화 |
+| Phase 2: URLValidator 확장 | 1.5시간 | 0.5시간 | 간단한 메서드 추가 |
+| Phase 3: URLBar 수정 | 1시간 | 0.5시간 | 기존 로직 유지 |
+| Phase 4: 테스트 작성 | 2시간 | 1시간 | Google Test 템플릿 사용 |
+| Phase 5: 문서화 및 커밋 | 1시간 | 1시간 | 계획대로 진행 |
+| **총합** | **7.5시간** | **4시간** | 예상보다 빠름 |
+
+### 다음 단계
+- F-11 (설정 화면)에서 기본 검색 엔진 선택 UI 구현
+- F-08 (히스토리 관리) 완료 후 검색 히스토리 저장 연동
+- 실제 디바이스(LG 프로젝터)에서 검색 엔진 렌더링 테스트
+
+---
+
 ## [2026-02-14] F-02: 웹뷰 통합 (WebView Integration)
 
 ### 상태

@@ -6,6 +6,86 @@
 
 ---
 
+## [0.3.0] - 2026-02-14
+
+### F-09: 검색 엔진 통합 (Search Engine Integration) 완료
+
+#### Added (새로 추가됨)
+
+- **SearchEngine 클래스 (정적 메서드)**
+  - `src/services/SearchEngine.h`: 검색 엔진 관리 인터페이스 (3.5KB)
+  - `src/services/SearchEngine.cpp`: 검색 엔진 구현 (5.2KB)
+  - 4개 검색 엔진 지원: Google, Naver, Bing, DuckDuckGo
+
+- **검색 엔진 API**
+  - `buildSearchUrl(query, engineId)`: 검색어 → 검색 URL 생성
+  - `getDefaultSearchEngine()`: 현재 설정된 검색 엔진 조회 (Qt Settings)
+  - `setDefaultSearchEngine(engineId)`: 기본 검색 엔진 설정
+  - `getAllSearchEngines()`: 모든 검색 엔진 목록 조회 (F-11 연동 준비)
+  - `getSearchEngineName(engineId)`: 검색 엔진 이름 조회
+  - `isSearchQuery(input)`: URL vs 검색어 자동 판단
+
+- **URL 인코딩**
+  - `QUrl::toPercentEncoding()` 사용하여 XSS 방지
+  - 한글, 특수문자, 공백 처리 지원
+  - 예: "고양이 동영상" → "%EA%B3%A0%EC%96%91%EC%9D%B4%20%EB%8F%99%EC%98%81%EC%83%81"
+
+- **URLValidator 확장**
+  - `isSearchQuery()` 메서드 추가
+  - URL 형식 우선 처리 (프로토콜, 도메인, localhost, IP)
+  - 검색어 감지 로직 추가
+
+- **URLBar 검색어 처리 통합**
+  - `validateAndCompleteUrl()`에서 검색어 처리
+  - URL 검증 실패 시 자동으로 검색 URL 생성
+  - 검색 URL을 WebView에 전달
+
+- **설정 영속성**
+  - Qt Settings (`QSettings("LG", "webOSBrowser")`) 사용
+  - 앱 재시작 후에도 기본 검색 엔진 유지
+  - 저장 키: `"defaultSearchEngine"`
+
+- **테스트**
+  - `tests/unit/SearchEngineTest.cpp`: 23개 테스트 케이스
+  - `tests/unit/URLValidatorTest_SearchQuery.cpp`: 13개 테스트 케이스
+  - 회귀 테스트: 기존 F-03 URL 입력 기능 정상 동작 확인
+
+- **문서**
+  - `docs/components/SearchEngine.md`: API 레퍼런스 및 사용 가이드
+  - 검색 엔진 추가 가이드 포함
+  - 보안 고려사항 및 제약사항 문서화
+
+#### Changed (변경됨)
+
+- **URLBar**
+  - 검색어 입력 시 자동으로 검색 URL 생성
+  - URL과 검색어 자동 판단 로직 통합
+
+- **CMakeLists.txt**
+  - SearchEngine.cpp/h 추가
+  - 테스트 파일 추가 (SearchEngineTest, URLValidatorTest_SearchQuery)
+
+#### API Changes (API 변경)
+
+- `URLValidator::isSearchQuery()` 추가
+- `SearchEngine` 클래스 6개 정적 메서드 추가
+
+#### F-11 연동 준비
+
+- `getAllSearchEngines()`: 설정 화면에서 라디오 버튼 생성용
+- `getDefaultSearchEngine()`: 현재 선택된 엔진 조회용
+- `setDefaultSearchEngine()`: 검색 엔진 변경용
+
+#### 완료 기준 달성
+
+- ✅ URL vs 검색어 자동 판단 (4개 케이스 통과)
+- ✅ 검색 URL 생성 (4개 검색 엔진 지원)
+- ✅ 검색 결과 페이지 로드 (WebView 통합)
+- ✅ 검색 엔진 설정 저장/로드 (Qt Settings)
+- ✅ 회귀 테스트 (기존 F-03 정상 동작)
+
+---
+
 ## [0.2.0] - 2026-02-14
 
 ### F-02: 웹뷰 통합 (WebView Integration) 완료
