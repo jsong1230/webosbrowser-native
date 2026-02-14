@@ -11,6 +11,7 @@
 #include "../utils/URLValidator.h"
 #include <QMessageBox>
 #include <QEasingCurve>
+#include <QSharedPointer>
 #include <QDebug>
 
 namespace webosbrowser {
@@ -452,12 +453,37 @@ void SettingsPanel::onClearBookmarksClicked() {
             return;
         }
 
-        // 모든 북마크 삭제
-        for (const auto &bookmark : bookmarks) {
-            bookmarkService_->deleteBookmark(bookmark.id, [](bool) {});
+        if (bookmarks.isEmpty()) {
+            showToast("삭제할 북마크가 없습니다.");
+            return;
         }
 
-        showToast("북마크가 삭제되었습니다.");
+        // 카운터를 공유 포인터로 관리 (람다 캡처)
+        auto totalCount = QSharedPointer<int>::create(bookmarks.size());
+        auto deletedCount = QSharedPointer<int>::create(0);
+        auto failedCount = QSharedPointer<int>::create(0);
+
+        // 모든 북마크 삭제
+        for (const auto &bookmark : bookmarks) {
+            bookmarkService_->deleteBookmark(bookmark.id, [this, totalCount, deletedCount, failedCount](bool deleteSuccess) {
+                if (deleteSuccess) {
+                    (*deletedCount)++;
+                } else {
+                    (*failedCount)++;
+                }
+
+                // 모든 삭제 작업 완료 시
+                if (*deletedCount + *failedCount == *totalCount) {
+                    if (*failedCount == 0) {
+                        showToast("북마크가 삭제되었습니다.");
+                    } else {
+                        QMessageBox::warning(this, "경고",
+                            QString("일부 북마크 삭제에 실패했습니다. (%1/%2)")
+                                .arg(*failedCount).arg(*totalCount));
+                    }
+                }
+            });
+        }
     });
 }
 
@@ -477,12 +503,37 @@ void SettingsPanel::onClearHistoryClicked() {
             return;
         }
 
-        // 모든 히스토리 삭제
-        for (const auto &item : items) {
-            historyService_->deleteHistory(item.id, [](bool) {});
+        if (items.isEmpty()) {
+            showToast("삭제할 히스토리가 없습니다.");
+            return;
         }
 
-        showToast("히스토리가 삭제되었습니다.");
+        // 카운터를 공유 포인터로 관리 (람다 캡처)
+        auto totalCount = QSharedPointer<int>::create(items.size());
+        auto deletedCount = QSharedPointer<int>::create(0);
+        auto failedCount = QSharedPointer<int>::create(0);
+
+        // 모든 히스토리 삭제
+        for (const auto &item : items) {
+            historyService_->deleteHistory(item.id, [this, totalCount, deletedCount, failedCount](bool deleteSuccess) {
+                if (deleteSuccess) {
+                    (*deletedCount)++;
+                } else {
+                    (*failedCount)++;
+                }
+
+                // 모든 삭제 작업 완료 시
+                if (*deletedCount + *failedCount == *totalCount) {
+                    if (*failedCount == 0) {
+                        showToast("히스토리가 삭제되었습니다.");
+                    } else {
+                        QMessageBox::warning(this, "경고",
+                            QString("일부 히스토리 삭제에 실패했습니다. (%1/%2)")
+                                .arg(*failedCount).arg(*totalCount));
+                    }
+                }
+            });
+        }
     });
 }
 
