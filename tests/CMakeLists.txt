@@ -28,12 +28,14 @@ set(UNIT_TESTS
     unit/SearchEngineTest.cpp
     unit/URLBarTest.cpp
     unit/TabManagerTest.cpp
+    unit/ErrorPageTest.cpp
 )
 
 # 통합 테스트
 set(INTEGRATION_TESTS
     integration/BrowserWindowIntegrationTest.cpp
     integration/BrowserWindowTabManagerIntegrationTest.cpp
+    integration/BrowserWindowErrorHandlingTest.cpp
 )
 
 # 모든 테스트 목록
@@ -45,11 +47,14 @@ add_executable(webosbrowser_tests
     # 소스 파일들 (테스트에서 필요한 클래스들)
     ../src/utils/URLValidator.cpp
     ../src/ui/URLBar.cpp
+    ../src/ui/ErrorPage.cpp
+    ../src/ui/LoadingIndicator.cpp
+    ../src/ui/NavigationBar.cpp
+    ../src/ui/BookmarkPanel.cpp
+    ../src/ui/HistoryPanel.cpp
     ../src/browser/BrowserWindow.cpp
     ../src/browser/WebView.cpp
     ../src/browser/TabManager.cpp
-    ../src/ui/NavigationBar.cpp
-    ../src/ui/BookmarkPanel.cpp
     ../src/services/BookmarkService.cpp
     ../src/services/HistoryService.cpp
     ../src/services/StorageService.cpp
