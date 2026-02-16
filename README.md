@@ -2,12 +2,21 @@
 
 > webOS Native App (C++/Qt) 기반 웹 브라우저
 
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/jsong1230/webosbrowser-native)
+[![Platform](https://img.shields.io/badge/platform-webOS-green.svg)](https://www.webosose.org/)
+[![C++](https://img.shields.io/badge/C++-17-blue.svg)](https://isocpp.org/)
+[![Qt](https://img.shields.io/badge/Qt-5.15+-green.svg)](https://www.qt.io/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**🚀 Status**: v1.0.0 릴리스 완료 (2026-02-16)
+
 ## 프로젝트 정보
 
-- **버전**: 1.0.0 (개발 완료)
+- **버전**: 1.0.0 (전체 기능 완료)
 - **기술 스택**: C++17, Qt 5.15+, CMake 3.16+
 - **타겟 플랫폼**: webOS 6.x (LG HU715QW 프로젝터)
 - **전신 프로젝트**: [webosbrowser](https://github.com/jsong1230/webosbrowser) (Web App PoC)
+- **저장소**: https://github.com/jsong1230/webosbrowser-native
 
 ## 프로젝트 배경
 
@@ -87,6 +96,9 @@ webosbrowser-native/
 - ✅ 24개 소스 파일 컴파일 성공
 - ✅ 실행 파일 생성: `bin/webosbrowser` (1.1MB, arm64)
 - ✅ 실행 테스트 통과
+- ✅ Qt WebEngine 자동 감지 시스템
+- ✅ Mac 개발: WebView 스텁 (시각화)
+- ✅ webOS 배포: WebView 실제 구현 (Qt WebEngine)
 
 ## 빌드 및 실행
 
@@ -120,48 +132,68 @@ make
 - F-12 다운로드 관리는 설계 완료되었으나 WebEngine 의존성으로 빌드에서 제외
 - DownloadManager.cpp, DownloadPanel.cpp 컴파일 제외
 
-### webOS 디바이스 배포
+### webOS 프로젝터 배포
 
-실제 webOS 프로젝터에서 사용하려면:
+**📘 상세 가이드**: [DEPLOY_GUIDE.md](DEPLOY_GUIDE.md)
+
+**빠른 시작:**
 
 ```bash
-# 1. webOS WebView API로 WebView 구현 교체
-# src/browser/WebView_stub.cpp → src/browser/WebView.cpp
-# webOS WebView API 사용하여 실제 렌더링 구현
+# 1. 배포 디렉토리 생성
+mkdir -p webos-deploy/bin
+cp build/bin/webosbrowser webos-deploy/bin/
+cp -r webos-meta/* webos-deploy/
 
 # 2. IPK 패키지 생성
-ares-package build/
+ares-package webos-deploy/ --outdir ./dist
 
-# 3. 프로젝터에 설치
-ares-install --device projector com.jsong.webosbrowser.native_1.0.0_arm64.ipk
+# 3. 프로젝터 설치
+ares-install --device projector dist/*.ipk
 
 # 4. 실행
 ares-launch --device projector com.jsong.webosbrowser.native
 ```
 
-### 필요한 실제 구현
+### Qt WebEngine 자동 감지
 
-실제 webOS 디바이스에서 동작하려면 다음 구현 필요:
+프로젝터에서 Qt WebEngine이 **있으면**:
+- ✅ `WebView.cpp` 사용 (실제 웹 렌더링)
+- ✅ Google, Naver 등 모든 사이트 로드 가능
+- ✅ 완전한 브라우저 기능
 
-1. **WebView API 통합**
-   - webOS WebView API로 `WebView_stub.cpp` 교체
-   - WAM(Web Application Manager) 연동
-   - 실제 Chromium 렌더링 구현
+프로젝터에서 Qt WebEngine이 **없으면**:
+- ⚠️ `WebView_stub.cpp` 사용 (시각화만)
+- ⚠️ 실제 웹사이트 로드 불가
+- 💡 Qt WebView로 대체 고려
 
-2. **LS2 API 통합**
-   - `StorageService`: 현재 QSettings 사용 → LS2 DB8 API 사용
-   - 북마크/히스토리 영구 저장소 구현
+## 📚 문서
 
-3. **다운로드 기능 복원**
-   - `DownloadManager`: WebEngine 대신 webOS 다운로드 API 사용
-   - `DownloadPanel`: UI는 구현 완료
+- **배포 가이드**: [DEPLOY_GUIDE.md](DEPLOY_GUIDE.md)
+- **개발 가이드**: [GETTING_STARTED.md](GETTING_STARTED.md)
+- **변경 이력**: [CHANGELOG.md](CHANGELOG.md)
+- **개발 로그**: [docs/dev-log.md](docs/dev-log.md)
 
-## 참고 자료
+## 📖 참고 자료
 
 - [webOS Native API 가이드](https://webostv.developer.lge.com/develop/native-apps/native-app-overview)
 - [Qt for webOS](https://webostv.developer.lge.com/develop/native-apps/webos-qt-overview)
 - [Web App PoC 리포지토리](https://github.com/jsong1230/webosbrowser)
 
+## 🤝 기여
+
+이슈와 PR은 언제나 환영합니다!
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'feat: Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 라이선스
+
+MIT License - 자유롭게 사용하세요!
+
 ---
 
 **© 2026 webOS Browser Native Project**
+**Made with ❤️ for LG HU715QW Projector**
