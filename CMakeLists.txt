@@ -86,9 +86,10 @@ if(Qt5WebEngineWidgets_FOUND)
     list(APPEND SOURCES src/browser/WebView.cpp)
     add_definitions(-DUSE_WEBENGINE)
 else()
-    message(WARNING "Qt5 WebEngine not found - building with WebView stub")
-    message(WARNING "WebView functionality will be limited (no actual web rendering)")
-    list(APPEND SOURCES src/browser/WebView_stub.cpp)
+    # webOS Luna Service 버전 사용 (실제 브라우저 호출)
+    message(STATUS "Using Luna Service WebView (system browser integration)")
+    list(APPEND SOURCES src/browser/WebView_lunasvc.cpp)
+    add_definitions(-DUSE_LUNA_SERVICE)
 endif()
 
 # 실행 파일 생성

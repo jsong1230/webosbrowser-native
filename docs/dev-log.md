@@ -2168,3 +2168,52 @@ src/browser/WebView_stub.cpp
 - 변경 파일: docs/dev-log.md
 src/browser/WebView_stub.cpp
 src/ui/URLBar.cpp
+
+#### [2026-02-16 21:24] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 21:26] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 21:29] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 21:30] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 21:34] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 21:40] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 21:41] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 21:46] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 21:48] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 21:56] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 22:06] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 22:09] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 22:12] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 22:16] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 22:21] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 22:31] Task: unknown
+- 변경 파일: CMakeLists.txt
+docs/dev-log.md
