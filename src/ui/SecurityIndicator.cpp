@@ -49,21 +49,11 @@ void SecurityIndicator::applyStyles() {
 }
 
 void SecurityIndicator::loadIconCache() {
-    // 아이콘 사전 로드 (성능 최적화)
+    // 텍스트 기반 아이콘 사용 (PNG 리소스 불필요)
+    // 아이콘 파일 로드 시도 (있으면 사용, 없으면 텍스트로 fallback)
     secureIcon_ = QPixmap(":/icons/lock_secure.png");
-    if (secureIcon_.isNull()) {
-        qWarning() << "SecurityIndicator: Secure 아이콘 로드 실패";
-    }
-
     insecureIcon_ = QPixmap(":/icons/lock_insecure.png");
-    if (insecureIcon_.isNull()) {
-        qWarning() << "SecurityIndicator: Insecure 아이콘 로드 실패";
-    }
-
     localIcon_ = QPixmap(":/icons/info.png");
-    if (localIcon_.isNull()) {
-        qWarning() << "SecurityIndicator: Local 아이콘 로드 실패";
-    }
 
     // 아이콘 크기 조정 (32x32px)
     if (!secureIcon_.isNull()) {
@@ -75,6 +65,8 @@ void SecurityIndicator::loadIconCache() {
     if (!localIcon_.isNull()) {
         localIcon_ = localIcon_.scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     }
+
+    qDebug() << "SecurityIndicator: 텍스트 기반 아이콘 모드 준비 완료";
 }
 
 void SecurityIndicator::setSecurityLevel(SecurityLevel level) {
@@ -83,15 +75,33 @@ void SecurityIndicator::setSecurityLevel(SecurityLevel level) {
     // 아이콘 변경
     switch (level) {
         case SecurityLevel::Secure:
-            setPixmap(secureIcon_);
+            if (!secureIcon_.isNull()) {
+                setPixmap(secureIcon_);
+            } else {
+                // 텍스트 기반 fallback
+                setText("🔒");
+                setStyleSheet(styleSheet() + "QLabel { color: #4caf50; font-size: 24px; }");
+            }
             setToolTip(SecurityClassifier::securityLevelToTooltip(level));
             break;
         case SecurityLevel::Insecure:
-            setPixmap(insecureIcon_);
+            if (!insecureIcon_.isNull()) {
+                setPixmap(insecureIcon_);
+            } else {
+                // 텍스트 기반 fallback
+                setText("⚠️");
+                setStyleSheet(styleSheet() + "QLabel { color: #ff9800; font-size: 24px; }");
+            }
             setToolTip(SecurityClassifier::securityLevelToTooltip(level));
             break;
         case SecurityLevel::Local:
-            setPixmap(localIcon_);
+            if (!localIcon_.isNull()) {
+                setPixmap(localIcon_);
+            } else {
+                // 텍스트 기반 fallback
+                setText("ℹ️");
+                setStyleSheet(styleSheet() + "QLabel { color: #2196f3; font-size: 24px; }");
+            }
             setToolTip(SecurityClassifier::securityLevelToTooltip(level));
             break;
         case SecurityLevel::Unknown:
