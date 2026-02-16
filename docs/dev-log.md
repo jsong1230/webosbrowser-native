@@ -2155,3 +2155,16 @@ webos-meta/appinfo.json
 
 #### [2026-02-16 21:00] Task: unknown
 - 변경 파일: docs/dev-log.md
+
+#### [2026-02-16 21:13] Task: unknown
+- 변경 파일: docs/dev-log.md
+src/browser/WebView_stub.cpp
+
+#### [2026-02-16 21:15] Task: unknown
+- 변경 파일: docs/dev-log.md
+src/browser/WebView_stub.cpp
+
+#### [2026-02-16 21:20] Task: unknown
+- 변경 파일: docs/dev-log.md
+src/browser/WebView_stub.cpp
+src/ui/URLBar.cpp

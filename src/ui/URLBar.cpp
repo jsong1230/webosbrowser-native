@@ -119,11 +119,16 @@ void URLBar::onReturnPressed() {
     // URL 검증 및 자동 보완
     QUrl url = validateAndCompleteUrl(input);
 
+    qDebug() << "📝 URLBar: 입력값 =" << input;
+    qDebug() << "🔍 URLBar: 검증 결과 URL =" << url.toString();
+    qDebug() << "✅ URLBar: isValid =" << url.isValid() << ", host =" << url.host();
+
     if (url.isValid() && !url.host().isEmpty()) {
-        qDebug() << "URLBar: URL 제출 -" << url.toString();
+        qDebug() << "✅ URLBar: URL 제출 -" << url.toString();
         hideError();
         emit urlSubmitted(url);
     } else {
+        qDebug() << "❌ URLBar: URL 검증 실패";
         showError("유효한 URL을 입력하세요");
     }
 }
