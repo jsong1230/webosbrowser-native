@@ -1,6 +1,6 @@
 {
   "id": "com.jsong.webosbrowser.native",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "vendor": "jsong",
   "type": "native",
   "main": "webosbrowser",
@@ -8,7 +8,7 @@
   "icon": "icon.png",
   "largeIcon": "largeIcon.png",
   "splashBackground": "splashBackground.png",
-  "appDescription": "C++/Qt 기반 webOS Native 웹 브라우저",
+  "appDescription": "C++/Qt 기반 webOS Native 웹 브라우저 v1.0.0",
   "resolution": "1920x1080",
   "requiredPermissions": [
     "network.operation",

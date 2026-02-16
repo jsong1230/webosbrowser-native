@@ -2120,3 +2120,32 @@ src/browser/BrowserWindow.cpp
 src/browser/BrowserWindow.h
 src/models/Bookmark.h
 src/services/BookmarkService.cpp
+
+#### [2026-02-15 08:22] Task: unknown
+- 변경 파일: docs/dev-log.md
+
+#### [2026-02-15 19:00] Task: unknown
+- 변경 파일: docs/dev-log.md
+webos-meta/appinfo.json
+
+#### [2026-02-15 19:04] Task: unknown
+- 변경 파일: docs/dev-log.md
+webos-meta/appinfo.json
+
+#### [2026-02-15 19:05] Task: unknown
+- 변경 파일: docs/dev-log.md
+webos-meta/appinfo.json
+
+#### [2026-02-15 19:07] Task: unknown
+- 변경 파일: docs/dev-log.md
+webos-meta/appinfo.json
+
+#### [2026-02-15 19:16] Task: unknown
+- 변경 파일: CMakeLists.txt
+docs/dev-log.md
+webos-meta/appinfo.json
+
+#### [2026-02-16 20:58] Task: unknown
+- 변경 파일: CMakeLists.txt
+docs/dev-log.md
+webos-meta/appinfo.json
