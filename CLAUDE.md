@@ -1,5 +1,61 @@
 # CLAUDE.md — webOS Browser Native 프로젝트
 
+---
+
+## ⚡ 작업 재개 체크포인트 (2026-02-22)
+
+### 현재 상태
+- **ARM 빌드**: ✅ 성공 (`build_webos/bin/webosbrowser`, ELF 32-bit ARM soft-float)
+- **프로젝터 배포**: ✅ 성공 (`com.jsong.webosbrowser.native` 설치됨)
+- **QML UI**: ✅ 프로젝터 화면에 표시됨 (`[main] QML 로드 성공` 확인)
+- **미확인**: luna-send → com.webos.app.browser 실제 실행 여부
+
+### 다음 확인할 사항
+1. `ares-launch -d projector com.jsong.webosbrowser.native` 로 앱 실행
+2. 리모컨으로 URL 입력 → 시스템 브라우저(com.webos.app.browser)가 뜨는지 확인
+3. 안 뜨면 → luna-send 직접 테스트:
+   ```bash
+   # 프로젝터 SSH에서 (ares-shell 우선, 안 되면 직접)
+   /usr/bin/luna-send -n 1 luna://com.webos.service.applicationmanager/launch \
+     '{"id":"com.webos.app.browser","params":{"target":"https://www.google.com"}}'
+   ```
+
+### 빌드 & 배포 명령어
+```bash
+# ARM 빌드 (Docker 크로스 컴파일)
+./build-webos.sh
+
+# 패키징 + 프로젝터 설치 + 실행
+./package-webos.sh
+
+# SSH로 프로젝터 접속 (ares-shell 안 되면 직접)
+ssh -i ~/.ssh/projector_webos -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedKeyTypes=+ssh-rsa -p 9922 prisoner@172.30.1.66
+
+# 앱 직접 실행 (디버그 로그 확인용)
+WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/tmp/xdg \
+  /media/developer/apps/usr/palm/applications/com.jsong.webosbrowser.native/webosbrowser
+```
+
+### 프로젝터 환경
+- **주소**: 172.30.1.66:9922
+- **계정**: prisoner / SSH 키: `~/.ssh/projector_webos`
+- **ares 디바이스명**: projector
+- **OS**: webOS 6.3.1, Qt 5.12.3, ARMv7l soft-float ABI
+- **Qt 모듈**: Core, Gui, Qml, Quick, Network 설치됨 / Controls 1.x만 있음 (2.x 없음)
+
+### 주요 파일
+| 파일 | 설명 |
+|------|------|
+| `src/browser/WebOSController.cpp` | luna-send로 시스템 브라우저 실행 |
+| `resources/qml/main.qml` | 메인 UI (1920x1080, 리모컨 전용) |
+| `toolchain/webos-arm.cmake` | ARMv7 soft-float 크로스 컴파일 툴체인 |
+| `Dockerfile.webos` | Docker 빌드 환경 |
+| `build-webos.sh` | Docker 크로스 컴파일 스크립트 |
+| `package-webos.sh` | IPK 패키징 + 배포 스크립트 |
+| `sysroot/usr/lib/` | 프로젝터에서 추출한 Qt5.12.3 .so 파일들 |
+
+---
+
 # 프로젝트: webOS Browser Native
 
 ## 프로젝트 개요
