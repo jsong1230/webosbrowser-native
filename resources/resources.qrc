@@ -4,4 +4,13 @@
         <file>styles/dark.qss</file>
         <file>styles/light.qss</file>
     </qresource>
+    <qresource prefix="/qml">
+        <file>qml/main.qml</file>
+        <file>qml/UrlBar.qml</file>
+        <file>qml/NavBar.qml</file>
+        <file>qml/BookmarkPanel.qml</file>
+        <file>qml/HistoryPanel.qml</file>
+        <file>qml/HomeScreen.qml</file>
+        <file>qml/SettingsPanel.qml</file>
+    </qresource>
 </RCC>

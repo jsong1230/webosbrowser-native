@@ -1,45 +1,91 @@
 /**
  * @file main.cpp
- * @brief webOS Browser Native App 진입점
+ * @brief webOS Browser Native App 진입점 (QML 기반)
+ *
+ * QGuiApplication + QQmlApplicationEngine 구조로 구현.
+ * 서비스 클래스들을 QML Context Property로 등록하여 QML에서 사용 가능하게 합니다.
  */
 
-#include <QApplication>
+#include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
 #include <QDebug>
-#include "browser/BrowserWindow.h"
 
-namespace webosbrowser {
+#include "browser/WebOSController.h"
+#include "services/BookmarkService.h"
+#include "services/HistoryService.h"
+#include "services/SettingsService.h"
+#include "services/StorageService.h"
+#include "services/SearchEngine.h"
 
-/**
- * @brief 애플리케이션 진입점
- * @param argc 명령줄 인자 개수
- * @param argv 명령줄 인자 배열
- * @return 애플리케이션 종료 코드
- */
-int main(int argc, char *argv[]) {
-    // Qt 애플리케이션 초기화
-    QApplication app(argc, argv);
+using namespace webosbrowser;
 
-    // 애플리케이션 정보 설정
-    QApplication::setApplicationName("webOS Browser");
-    QApplication::setApplicationVersion("0.1.0");
-    QApplication::setOrganizationName("jsong");
-    QApplication::setOrganizationDomain("com.jsong.webosbrowser.native");
+int main(int argc, char *argv[])
+{
+    // webOS Wayland 환경 설정 (webOS 타겟 빌드에서만 적용)
+#ifdef USE_WEBOS_TARGET
+    qputenv("QT_QPA_PLATFORM", "wayland");
+    qputenv("XDG_RUNTIME_DIR", "/tmp/xdg");
+    qputenv("WAYLAND_DISPLAY", "wayland-0");
+    qputenv("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1");
+    qDebug() << "[main] webOS Wayland 환경 설정 완료";
+#else
+    qDebug() << "[main] macOS 개발 환경 (Wayland 설정 생략)";
+#endif
 
-    qDebug() << "webOS Browser Native App 시작...";
+    // Qt 6에서 High DPI 자동 활성화 (Qt5에서는 수동 설정)
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    QGuiApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#endif
 
-    // 메인 윈도우 생성 및 표시
-    BrowserWindow window;
-    window.show();
+    QGuiApplication app(argc, argv);
 
-    // 이벤트 루프 실행
+    // 애플리케이션 메타데이터 설정
+    QGuiApplication::setApplicationName("webOS Browser");
+    QGuiApplication::setApplicationVersion("1.0.0");
+    QGuiApplication::setOrganizationName("jsong");
+    QGuiApplication::setOrganizationDomain("com.jsong.webosbrowser.native");
+
+    qDebug() << "[main] webOS Browser Native App (QML) 시작";
+
+    // ─────────────────────────────────────────────────────────
+    // 서비스 초기화 (의존성 주입 체인)
+    // ─────────────────────────────────────────────────────────
+    StorageService storageService;
+    storageService.initialize();
+
+    BookmarkService bookmarkService(&storageService);
+    HistoryService historyService(&storageService);
+    SettingsService settingsService(&storageService);
+    settingsService.loadSettings();
+
+    WebOSController webosController;
+
+    // ─────────────────────────────────────────────────────────
+    // QML 엔진 설정
+    // ─────────────────────────────────────────────────────────
+    QQmlApplicationEngine engine;
+    QQmlContext* context = engine.rootContext();
+
+    // C++ 서비스를 QML Context Property로 등록
+    context->setContextProperty("webOSController", &webosController);
+    context->setContextProperty("bookmarkService", &bookmarkService);
+    context->setContextProperty("historyService", &historyService);
+    context->setContextProperty("settingsService", &settingsService);
+
+    qDebug() << "[main] QML Context Property 등록 완료";
+
+    // QML import 경로 추가 (컴포넌트 파일들 위치)
+    engine.addImportPath(QStringLiteral("qrc:/"));
+
+    // QML 메인 파일 로드
+    engine.load(QUrl(QStringLiteral("qrc:/qml/main.qml")));
+
+    if (engine.rootObjects().isEmpty()) {
+        qCritical() << "[main] QML 로드 실패! 종료합니다.";
+        return -1;
+    }
+
+    qDebug() << "[main] QML 로드 성공, 이벤트 루프 시작";
     return app.exec();
-}
-
-} // namespace webosbrowser
-
-/**
- * @brief C 스타일 main 함수 (진입점)
- */
-int main(int argc, char *argv[]) {
-    return webosbrowser::main(argc, argv);
 }
