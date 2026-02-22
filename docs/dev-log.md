@@ -1,5 +1,88 @@
 # 개발 진행 로그
 
+## [2026-02-22] webOS 프로젝터 QML 앱 배포 및 동작 확인
+
+### 상태
+✅ **완료** (UI 표시 확인, 동작 테스트 진행 중)
+
+### 실행 모드
+순차 서브에이전트 실행
+
+### 목표
+webOS 프로젝터(HU715QW, ARMv7, webOS 6.3.1, Qt5.12.3)에 QML 기반 브라우저 네이티브 앱 배포 및 동작 확인
+
+### 완료된 작업
+
+#### 1. QRC 리소스 경로 버그 수정 (resources/resources.qrc)
+- **문제**: `prefix="/qml"` + `<file>qml/main.qml</file>` → 실제 경로가 `qrc:/qml/qml/main.qml`이 됨
+- **원인**: prefix + "/" + file경로가 최종 resource 경로가 되므로 중복 발생
+- **수정**: `prefix="/"` 로 변경 → `qrc:/qml/main.qml` (main.cpp의 로드 경로와 일치)
+- **결과**: QML 로드 성공
+
+#### 2. build-webos.sh 컴파일러 참조 수정
+- **문제**: 스크립트에 `arm-linux-gnueabihf-g++` (hard-float) 참조가 남아있었음
+- **수정**: `arm-linux-gnueabi-g++` (soft-float)로 변경
+- **결과**: 크로스컴파일 체인 일관성 확보
+
+#### 3. QtQuick.Controls 2.x 의존성 제거 (7개 QML 파일)
+- **문제**: 프로젝터에 `QtQuick.Controls 2.x` 미설치, 1.x만 존재
+  - `/usr/lib/qml/QtQuick/Controls/qmldir` → `QtQuickControls1Plugin` (1.x)
+  - Controls 2.x: 없음
+- **수정**:
+  - `main.qml`, `UrlBar.qml`, `NavBar.qml`, `HomeScreen.qml`: `import QtQuick.Controls 2.12` 제거
+  - `BookmarkPanel.qml`, `HistoryPanel.qml`, `SettingsPanel.qml`: import 제거 + `ScrollBar.vertical` 제거
+  - ScrollBar는 시각적 장식이며 리모컨 앱에서 불필요
+- **결과**: QML 파일 로드 오류 해결
+
+#### 4. StorageService 디렉토리 생성 실패 수정 (src/services/StorageService.cpp)
+- **문제**: webOS 샌드박스 환경에서 `QDir::mkpath()` 실패 (권한 또는 경로 미존재)
+  - 대상 경로: `/media/developer/.local/share/jsong/webOS Browser`
+- **수정**: mkpath 실패 시 `/tmp/webosbrowser_data`로 폴백
+- **결과**: 데이터 저장 경로 자동 복구 가능
+
+### 최종 상태
+
+#### ARM 바이너리
+- **타입**: ELF 32-bit ARM
+- **ABI**: soft-float (arm-linux-gnueabi)
+- **동적 링커**: `/lib/ld-linux.so.3`
+- **상태**: ✅ 프로젝터와 호환
+
+#### 프로젝터 설치 및 실행
+- **ares-install**: ✅ 성공
+- **QML 로드**: ✅ `[main] QML 로드 성공, 이벤트 루프 시작` 로그 확인
+- **webOS 플랫폼 감지**: ✅ `Using the 'webos' shell integration` 확인
+- **UI 표시**: ✅ 프로젝터 화면에 "외부 브라우저에서 열림" 텍스트 표시 확인
+
+### 미완료/미확인 사항
+- luna-send 실행 후 com.webos.app.browser가 실제로 열리는지 확인 필요
+- ares-launch 세션에서 QProcess + luna-send 동작 여부 확인 필요
+- StorageService /tmp 폴백 경로에서 데이터 저장 정상 동작 확인 필요
+
+### 문서 상태
+- 요구사항 분석서: 해당없음 (기술 검증 작업)
+- 기술 설계서: 해당없음 (기존 설계 기반)
+- 구현 계획서: 해당없음 (기존 구현 기반)
+- API 스펙: 해당없음
+- DB 설계서: 해당없음
+- 컴포넌트 문서: 해당없음
+
+### 핵심 파일 위치
+- 빌드 스크립트: `build-webos.sh`
+- 패키징/배포: `package-webos.sh`
+- QML 리소스: `resources/resources.qrc`
+- QML 파일들: `resources/qml/`
+- ARM 툴체인: `toolchain/webos-arm.cmake`
+- Docker 이미지: `Dockerfile.webos`
+- 배포 대상: `com.jsong.webosbrowser.native` @ 172.30.1.66:9922
+
+### 다음에 할 일
+1. ares-launch로 앱 실행 후 URL 입력 → com.webos.app.browser 실제 실행 여부 확인
+2. 미동작 시: QProcess 대신 system() 또는 직접 luna-send 경로 확인
+3. 데이터 저장 기능 테스트 (북마크, 히스토리 등)
+
+---
+
 ## [2026-02-22] 빌드 시스템 버그 수정 - Qt6 WebEngine 활성화
 
 ### 상태
@@ -2381,3 +2464,109 @@ build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
 build_test/webosbrowser_tests_autogen/timestamp
 docs/dev-log.md
 src/browser/WebView_lunasvc.cpp
+
+#### [2026-02-22 22:19] Task: unknown
+- 변경 파일: build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+
+#### [2026-02-22 22:25] Task: unknown
+- 변경 파일: build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+
+#### [2026-02-22 22:41] Task: unknown
+- 변경 파일: build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+
+#### [2026-02-22 22:47] Task: unknown
+- 변경 파일: CMakeLists.txt
+build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+resources/resources.qrc
+src/main.cpp
+
+#### [2026-02-22 22:48] Task: unknown
+- 변경 파일: CMakeLists.txt
+build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+resources/resources.qrc
+src/main.cpp
+
+#### [2026-02-22 22:56] Task: unknown
+- 변경 파일: build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+
+#### [2026-02-22 22:56] Task: unknown
+- 변경 파일: build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+
+#### [2026-02-22 22:56] Task: unknown
+- 변경 파일: build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+
+#### [2026-02-22 23:11] Task: unknown
+- 변경 파일: CMakeLists.txt
+build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+
+#### [2026-02-22 23:19] Task: unknown
+- 변경 파일: CMakeLists.txt
+build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+resources/qml/BookmarkPanel.qml
+resources/qml/HistoryPanel.qml
+resources/qml/HomeScreen.qml
+resources/qml/NavBar.qml
+
+#### [2026-02-22 23:22] Task: unknown
+- 변경 파일: CMakeLists.txt
+build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+resources/qml/BookmarkPanel.qml
+resources/qml/HistoryPanel.qml
+resources/qml/HomeScreen.qml
+resources/qml/NavBar.qml
+
+#### [2026-02-22 23:40] Task: unknown
+- 변경 파일: CMakeLists.txt
+build_test/webosbrowser_tests_autogen/3XGCZSBEA2/moc_TabManager.cpp.d
+build_test/webosbrowser_tests_autogen/deps
+build_test/webosbrowser_tests_autogen/mocs_compilation.cpp
+build_test/webosbrowser_tests_autogen/timestamp
+docs/dev-log.md
+resources/qml/BookmarkPanel.qml
+resources/qml/HistoryPanel.qml
+resources/qml/HomeScreen.qml
+resources/qml/NavBar.qml

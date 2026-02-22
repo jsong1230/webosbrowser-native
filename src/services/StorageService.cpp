@@ -16,15 +16,21 @@ StorageService::StorageService(QObject *parent)
     : QObject(parent)
     , isInitialized_(false)
 {
-    // Mock 구현: 데이터 디렉토리 경로 설정
+    // 데이터 디렉토리 경로 설정
     storageDir_ = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
 
-    // 디렉토리가 없으면 생성
+    // 디렉토리가 없으면 생성 시도
     QDir dir;
     if (!dir.exists(storageDir_)) {
-        dir.mkpath(storageDir_);
-        Logger::info(QString("스토리지 디렉토리 생성: %1").arg(storageDir_));
+        if (!dir.mkpath(storageDir_)) {
+            // 기본 경로 생성 실패 시 /tmp 폴백 (webOS 샌드박스 환경 대응)
+            storageDir_ = "/tmp/webosbrowser_data";
+            if (!dir.exists(storageDir_)) {
+                dir.mkpath(storageDir_);
+            }
+        }
     }
+    Logger::info(QString("스토리지 디렉토리: %1").arg(storageDir_));
 }
 
 StorageService::~StorageService() {

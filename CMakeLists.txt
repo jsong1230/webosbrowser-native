@@ -210,7 +210,7 @@ if(WEBOS_TARGET)
     target_compile_options(webosbrowser PRIVATE
         -march=armv7-a
         -mfpu=neon
-        -mfloat-abi=hard
+        -mfloat-abi=softfp
     )
 endif()
 

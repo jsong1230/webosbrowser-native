@@ -1,0 +1,178 @@
+# webOS ARMv7 크로스 컴파일 Docker 이미지
+# 타겟: LG 프로젝터 HU715QW (armv7l, soft-float ABI, Qt 5.12.3)
+# 호스트: Ubuntu 20.04 amd64
+#
+# 주의: macOS ARM64(Apple Silicon)에서 반드시 --platform linux/amd64 로 빌드
+#   docker build --platform linux/amd64 -t webosbrowser-builder -f Dockerfile.webos .
+#
+# 크로스 컴파일 구조:
+#   컴파일러: arm-linux-gnueabi-g++ (soft-float ABI, ld-linux.so.3)
+#   Qt5 헤더: Ubuntu amd64 qtbase5-dev (아키텍처 무관)
+#   Qt5 .so: 프로젝터에서 추출한 실제 라이브러리 (sysroot/usr/lib/)
+#   moc/rcc:  Ubuntu amd64 qtbase5-dev 호스트 바이너리
+
+FROM --platform=linux/amd64 ubuntu:20.04
+
+# 비대화형 설치 설정
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Seoul
+
+# ─────────────────────────────────────────────────────────
+# 1단계: 기본 빌드 도구 설치 (amd64 네이티브)
+# ─────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    ninja-build \
+    pkg-config \
+    git \
+    wget \
+    curl \
+    python3 \
+    python3-pip \
+    file \
+    rsync \
+    && rm -rf /var/lib/apt/lists/*
+
+# ─────────────────────────────────────────────────────────
+# 2단계: ARMv7 soft-float 크로스 컴파일러 설치
+# arm-linux-gnueabi: soft-float ABI (ld-linux.so.3) — 프로젝터 호환
+# arm-linux-gnueabihf: hard-float ABI (ld-linux-armhf.so.3) — 프로젝터 비호환
+# ─────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y \
+    gcc-arm-linux-gnueabi \
+    g++-arm-linux-gnueabi \
+    binutils-arm-linux-gnueabi \
+    && rm -rf /var/lib/apt/lists/*
+
+# 크로스 컴파일러 버전 확인
+RUN arm-linux-gnueabi-gcc --version && \
+    arm-linux-gnueabi-g++ --version
+
+# ─────────────────────────────────────────────────────────
+# 3단계: 호스트(amd64) Qt5 개발 패키지 설치
+# 목적: Qt5 헤더 + moc/rcc/qmake 호스트 실행 파일 + cmake 파일
+# 라이브러리는 프로젝터 sysroot를 사용하므로 amd64 런타임 불필요
+# ─────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y \
+    qtbase5-dev \
+    qtdeclarative5-dev \
+    qtquickcontrols2-5-dev \
+    qt5-default \
+    && rm -rf /var/lib/apt/lists/*
+
+# ─────────────────────────────────────────────────────────
+# 4단계: 프로젝터 Qt5 sysroot 라이브러리 복사
+# sysroot/usr/lib/ 에 미리 복사된 프로젝터 Qt5 .so 파일 사용
+# (soft-float ABI, EF_ARM_ABI_FLOAT_SOFT=0x200, ld-linux.so.3)
+# ─────────────────────────────────────────────────────────
+RUN mkdir -p /opt/qt5-sysroot/lib
+
+# sysroot는 빌드 컨텍스트에서 복사 (COPY 시점에 존재해야 함)
+COPY sysroot/usr/lib/libQt5Core.so.5.12.3    /opt/qt5-sysroot/lib/
+COPY sysroot/usr/lib/libQt5Gui.so.5.12.3     /opt/qt5-sysroot/lib/
+COPY sysroot/usr/lib/libQt5Network.so.5.12.3 /opt/qt5-sysroot/lib/
+COPY sysroot/usr/lib/libQt5Qml.so.5.12.3     /opt/qt5-sysroot/lib/
+COPY sysroot/usr/lib/libQt5Quick.so.5.12.3   /opt/qt5-sysroot/lib/
+
+# .so 심링크 생성 (cmake 링크 시 .so 이름으로 참조)
+RUN set -e && \
+    cd /opt/qt5-sysroot/lib && \
+    for lib in Core Gui Network Qml Quick; do \
+        ln -sfn libQt5${lib}.so.5.12.3 libQt5${lib}.so.5 && \
+        ln -sfn libQt5${lib}.so.5.12.3 libQt5${lib}.so && \
+        echo "심링크: libQt5${lib}.so -> libQt5${lib}.so.5.12.3"; \
+    done && \
+    echo "=== sysroot Qt5 라이브러리 ===" && \
+    ls -la /opt/qt5-sysroot/lib/
+
+# ─────────────────────────────────────────────────────────
+# 5단계: cmake Qt5 설정 구성
+#
+# 호스트 cmake 파일 → /opt/qt5-arm/lib/cmake/ 심링크
+# 헤더 → Ubuntu amd64 qt5 헤더 (아키텍처 무관, 동일 내용)
+# IMPORTED_LOCATION → sysroot Qt5 .so 심링크로 교체
+# ─────────────────────────────────────────────────────────
+RUN set -e && \
+    mkdir -p /opt/qt5-arm/lib/cmake && \
+    mkdir -p /opt/qt5-arm/include && \
+    # cmake 파일 심링크 (호스트 amd64용 cmake 파일 사용)
+    for mod in Qt5 Qt5Core Qt5Gui Qt5Network Qt5Qml Qt5Quick Qt5Widgets Qt5DBus; do \
+        src="/usr/lib/x86_64-linux-gnu/cmake/${mod}"; \
+        dst="/opt/qt5-arm/lib/cmake/${mod}"; \
+        if [ -d "$src" ]; then \
+            ln -sfn "$src" "$dst" && echo "cmake 심링크: ${mod}"; \
+        else \
+            echo "cmake 없음 (건너뜀): ${mod}"; \
+        fi; \
+    done && \
+    # 헤더 심링크 (Qt5 헤더는 아키텍처 무관)
+    ln -sfn /usr/include/x86_64-linux-gnu/qt5 /opt/qt5-arm/include/qt5 && \
+    echo "cmake 파일 목록:" && ls /opt/qt5-arm/lib/cmake/
+
+# cmake IMPORTED_LOCATION 교체:
+# Qt5 cmake config 파일이 x86_64 .so 경로를 하드코딩하므로
+# 해당 경로를 sysroot의 soft-float .so 심링크로 교체
+RUN set -e && \
+    X64_LIB=/usr/lib/x86_64-linux-gnu && \
+    SYSROOT_LIB=/opt/qt5-sysroot/lib && \
+    for lib in Core Gui Network Qml Quick; do \
+        x64_so="${X64_LIB}/libQt5${lib}.so"; \
+        x64_so_ver="${X64_LIB}/libQt5${lib}.so.5.12.8"; \
+        sysroot_so="${SYSROOT_LIB}/libQt5${lib}.so.5.12.3"; \
+        if [ -f "$sysroot_so" ]; then \
+            ln -sfn "$sysroot_so" "$x64_so_ver" 2>/dev/null && echo "교체: $x64_so_ver -> $sysroot_so"; \
+            ln -sfn "$sysroot_so" "$x64_so" 2>/dev/null && echo "교체: $x64_so -> $sysroot_so"; \
+        fi; \
+    done && \
+    echo "=== 교체 확인 ===" && \
+    file /usr/lib/x86_64-linux-gnu/libQt5Core.so.5.12.8
+
+# ─────────────────────────────────────────────────────────
+# 6단계: arm-linux-gnueabi sysroot 구성
+# cmake의 CMAKE_FIND_ROOT_PATH에서 런타임 라이브러리 탐색
+# ─────────────────────────────────────────────────────────
+RUN set -e && \
+    mkdir -p /opt/arm-sysroot/lib && \
+    mkdir -p /opt/arm-sysroot/usr/lib && \
+    # arm-linux-gnueabi 툴체인 런타임 라이브러리 (libc, libstdc++)
+    TOOLCHAIN_LIB=/usr/arm-linux-gnueabi/lib && \
+    if [ -d "$TOOLCHAIN_LIB" ]; then \
+        ln -sfn "$TOOLCHAIN_LIB" /opt/arm-sysroot/lib/gnueabi && \
+        echo "툴체인 라이브러리: $TOOLCHAIN_LIB"; \
+    fi && \
+    # sysroot Qt5 라이브러리 경로 추가
+    ln -sfn /opt/qt5-sysroot/lib /opt/arm-sysroot/usr/lib/qt5
+
+# ─────────────────────────────────────────────────────────
+# 7단계: 환경 변수
+# ─────────────────────────────────────────────────────────
+# Qt 호스트 도구 (moc, rcc, qmake): amd64 실행 파일
+ENV PATH="/usr/lib/x86_64-linux-gnu/qt5/bin:/usr/bin:${PATH}"
+
+# ─────────────────────────────────────────────────────────
+# 8단계: 빌드 환경 검증 스크립트
+# ─────────────────────────────────────────────────────────
+RUN printf '%s\n' \
+    '#!/bin/bash' \
+    'echo "=== 크로스 컴파일러 ==="' \
+    'arm-linux-gnueabi-g++ --version' \
+    'echo ""' \
+    'echo "=== sysroot Qt5 라이브러리 ==="' \
+    'ls /opt/qt5-sysroot/lib/libQt5*.so* 2>/dev/null' \
+    'echo ""' \
+    'echo "=== cmake Qt5 설정 ==="' \
+    'ls /opt/qt5-arm/lib/cmake/ 2>/dev/null' \
+    'echo ""' \
+    'echo "=== Qt 호스트 도구 ==="' \
+    'which moc && moc --version' \
+    'which rcc && rcc --version' \
+    'echo ""' \
+    'echo "=== cmake 버전 ==="' \
+    'cmake --version' \
+    > /usr/local/bin/verify-toolchain.sh && \
+    chmod +x /usr/local/bin/verify-toolchain.sh
+
+WORKDIR /build
+
+CMD ["/bin/bash"]

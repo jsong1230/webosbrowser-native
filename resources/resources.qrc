@@ -1,10 +1,8 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
-    <qresource prefix="/styles">
+    <qresource prefix="/">
         <file>styles/dark.qss</file>
         <file>styles/light.qss</file>
-    </qresource>
-    <qresource prefix="/qml">
         <file>qml/main.qml</file>
         <file>qml/UrlBar.qml</file>
         <file>qml/NavBar.qml</file>
