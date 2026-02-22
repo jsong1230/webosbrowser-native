@@ -6,6 +6,28 @@
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+#### 빌드 시스템 및 WebEngine 감지 (2026-02-22)
+- **CMakeLists.txt 재작성**: Qt6/Qt5 WebEngine/Luna Service 순차 탐지 시 변수 충돌 해결
+  - Qt6 WebEngineWidgets 우선 탐지
+  - 실패 시 Qt5 WebEngineWidgets으로 폴백
+  - 모두 실패 시 Qt5 Luna Service로 최종 폴백
+- **macOS 경로 추가**: `/opt/homebrew/opt/qt/lib/cmake` PREFIX_PATH 추가 (Homebrew Qt6 지원)
+- **WebView.cpp 컴파일 에러 수정**:
+  - `Q_Q(WebView)` → `q_ptr` 직접 참조 (Q_DECLARE_PUBLIC 누락 버그)
+  - `#include <QWebEngineHistory>` 추가 (incomplete type 에러)
+
+#### 결과
+- ✅ Qt6 (6.10.2) + WebEngineWidgets로 빌드 성공
+- ✅ 실제 웹 렌더링 활성화 (QWebEngineView 기반)
+- ✅ 앱이 완전한 웹 브라우저로 작동
+- ❌ Luna Service 폴백 모드는 유지 (호환성)
+
+---
+
 ## [1.0.0] - 2026-02-16 🎉
 
 ### 첫 공식 릴리스

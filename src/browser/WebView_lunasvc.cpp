@@ -24,11 +24,15 @@ public:
     QLabel *statusLabel;
     QUrl currentUrl;
     QProcess *lunaProcess;
+    LoadingState loadingState;
+    int currentProgress;
 
     WebViewPrivate()
         : statusLabel(nullptr)
         , currentUrl("about:blank")
         , lunaProcess(nullptr)
+        , loadingState(LoadingState::Idle)
+        , currentProgress(0)
     {}
 
     ~WebViewPrivate() {
@@ -70,12 +74,11 @@ WebView::WebView(QWidget *parent)
 }
 
 /**
- * @brief 소멸자
+ * @brief 소멸자 - QScopedPointer가 d_ptr 자동 해제
  */
 WebView::~WebView()
 {
     Logger::debug("[WebView] Luna Service 기반 WebView 소멸");
-    delete d_ptr;
 }
 
 /**
@@ -84,6 +87,8 @@ WebView::~WebView()
 void WebView::load(const QUrl &url)
 {
     d_ptr->currentUrl = url;
+    d_ptr->loadingState = LoadingState::Loading;
+    d_ptr->currentProgress = 0;
     Logger::info("[WebView] Luna Service로 URL 로드: " + url.toString());
 
     // luna-send 명령으로 시스템 브라우저 실행
@@ -103,14 +108,18 @@ void WebView::load(const QUrl &url)
     d_ptr->lunaProcess->start("sh", QStringList() << "-c" << lunaCmd);
 
     connect(d_ptr->lunaProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
+            this, [this](int exitCode, QProcess::ExitStatus) {
         if (exitCode == 0) {
             Logger::info("[WebView] Luna Service 호출 성공");
             d_ptr->statusLabel->setText(QString("로드 완료: %1").arg(d_ptr->currentUrl.toString()));
+            d_ptr->loadingState = LoadingState::Loaded;
+            d_ptr->currentProgress = 100;
             emit loadFinished(true);
         } else {
             Logger::error("[WebView] Luna Service 호출 실패: " + QString::number(exitCode));
             d_ptr->statusLabel->setText(QString("로드 실패: %1").arg(d_ptr->currentUrl.toString()));
+            d_ptr->loadingState = LoadingState::Error;
+            emit loadError("Luna Service 호출 실패");
             emit loadFinished(false);
         }
     });
@@ -119,21 +128,11 @@ void WebView::load(const QUrl &url)
 }
 
 /**
- * @brief 뒤로 가기 (제한적 지원)
+ * @brief URL 로드 (QString 오버로드)
  */
-void WebView::back()
+void WebView::load(const QString &url)
 {
-    Logger::warning("[WebView] Luna Service 모드에서는 history.back() 지원 안 됨");
-    d_ptr->statusLabel->setText("뒤로 가기: Luna Service 제약으로 지원 안 됨");
-}
-
-/**
- * @brief 앞으로 가기 (제한적 지원)
- */
-void WebView::forward()
-{
-    Logger::warning("[WebView] Luna Service 모드에서는 history.forward() 지원 안 됨");
-    d_ptr->statusLabel->setText("앞으로 가기: Luna Service 제약으로 지원 안 됨");
+    load(QUrl(url));
 }
 
 /**
@@ -146,31 +145,38 @@ void WebView::reload()
 }
 
 /**
- * @brief URL 반환
+ * @brief 로딩 중지
  */
-QUrl WebView::url() const
+void WebView::stop()
 {
-    return d_ptr->currentUrl;
+    if (d_ptr->lunaProcess && d_ptr->lunaProcess->state() != QProcess::NotRunning) {
+        d_ptr->lunaProcess->kill();
+        Logger::info("[WebView] 로딩 중지");
+    }
+    d_ptr->loadingState = LoadingState::Idle;
+    d_ptr->currentProgress = 0;
 }
 
 /**
- * @brief 페이지 제목 (Luna Service에서는 제한적)
+ * @brief 뒤로 가기 (Luna Service 제약으로 미지원)
  */
-QString WebView::title() const
+void WebView::goBack()
 {
-    return d_ptr->currentUrl.toString();
+    Logger::warning("[WebView] Luna Service 모드에서는 goBack() 미지원");
+    d_ptr->statusLabel->setText("뒤로 가기: Luna Service 제약으로 미지원");
 }
 
 /**
- * @brief 로딩 상태 (항상 false)
+ * @brief 앞으로 가기 (Luna Service 제약으로 미지원)
  */
-bool WebView::isLoading() const
+void WebView::goForward()
 {
-    return false;
+    Logger::warning("[WebView] Luna Service 모드에서는 goForward() 미지원");
+    d_ptr->statusLabel->setText("앞으로 가기: Luna Service 제약으로 미지원");
 }
 
 /**
- * @brief 히스토리 - 뒤로 가능 여부 (항상 false)
+ * @brief 뒤로 가기 가능 여부 (항상 false)
  */
 bool WebView::canGoBack() const
 {
@@ -178,11 +184,52 @@ bool WebView::canGoBack() const
 }
 
 /**
- * @brief 히스토리 - 앞으로 가능 여부 (항상 false)
+ * @brief 앞으로 가기 가능 여부 (항상 false)
  */
 bool WebView::canGoForward() const
 {
     return false;
+}
+
+/**
+ * @brief 현재 URL 반환
+ */
+QUrl WebView::url() const
+{
+    return d_ptr->currentUrl;
+}
+
+/**
+ * @brief 페이지 제목 반환
+ */
+QString WebView::title() const
+{
+    return d_ptr->currentUrl.toString();
+}
+
+/**
+ * @brief 현재 로딩 상태 반환
+ */
+LoadingState WebView::loadingState() const
+{
+    return d_ptr->loadingState;
+}
+
+/**
+ * @brief 로딩 진행률 반환 (0~100)
+ */
+int WebView::loadProgress() const
+{
+    return d_ptr->currentProgress;
+}
+
+/**
+ * @brief 다운로드 핸들러 설정 (Luna Service 모드에서는 미지원)
+ */
+void WebView::setupDownloadHandler(DownloadManager* downloadManager)
+{
+    Q_UNUSED(downloadManager)
+    Logger::warning("[WebView] Luna Service 모드에서는 다운로드 핸들러 미지원");
 }
 
 } // namespace webosbrowser
