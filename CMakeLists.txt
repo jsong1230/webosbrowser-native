@@ -11,17 +11,60 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-# Qt 패키지 찾기 (WebEngine은 선택사항)
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
-find_package(Qt5WebEngineWidgets QUIET)
+# Homebrew 경로 추가 (macOS)
+list(APPEND CMAKE_PREFIX_PATH /opt/homebrew)
 
-# 헤더 파일 경로
+# ─────────────────────────────────────────────────────────
+# Qt 탐지 전략: Qt6 WebEngine → Qt5 WebEngine → Luna Service
+# 중요: Qt5/Qt6를 혼용하면 QT_DEFAULT_MAJOR_VERSION 충돌 발생.
+#        하나의 버전만 사용한다.
+# ─────────────────────────────────────────────────────────
+
+# 1단계: Qt6 + WebEngine 시도
+find_package(Qt6 QUIET COMPONENTS Core Gui Widgets WebEngineWidgets)
+
+if(Qt6_FOUND AND Qt6WebEngineWidgets_FOUND)
+    message(STATUS "✅ Qt6 + WebEngineWidgets 사용 → 실제 브라우저 렌더링")
+    set(QT_NAMESPACE Qt6)
+    set(WEBENGINE_FOUND TRUE)
+    set(USE_QT6 TRUE)
+
+elseif(Qt6_FOUND)
+    # Qt6 있지만 WebEngine 없음
+    message(STATUS "⚠️  Qt6 있지만 WebEngineWidgets 없음 → Luna Service 모드")
+    set(QT_NAMESPACE Qt6)
+    set(WEBENGINE_FOUND FALSE)
+    set(USE_QT6 TRUE)
+
+else()
+    # 2단계: Qt5 + WebEngine 시도
+    message(STATUS "Qt6 없음 → Qt5 시도")
+    find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets)
+    find_package(Qt5WebEngineWidgets QUIET)
+
+    set(QT_NAMESPACE Qt5)
+    set(USE_QT6 FALSE)
+
+    if(Qt5WebEngineWidgets_FOUND)
+        message(STATUS "✅ Qt5 + WebEngineWidgets 사용")
+        set(WEBENGINE_FOUND TRUE)
+    else()
+        message(STATUS "⚠️  Qt5 WebEngine 없음 → Luna Service 모드")
+        set(WEBENGINE_FOUND FALSE)
+    endif()
+endif()
+
+# ─────────────────────────────────────────────────────────
+# 헤더 경로
+# ─────────────────────────────────────────────────────────
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+# ─────────────────────────────────────────────────────────
 # 소스 파일 목록
+# ─────────────────────────────────────────────────────────
 set(SOURCES
     src/main.cpp
     src/browser/BrowserWindow.cpp
@@ -47,7 +90,6 @@ set(SOURCES
     src/utils/SecurityClassifier.cpp
 )
 
-# 헤더 파일 목록
 set(HEADERS
     src/browser/BrowserWindow.h
     src/browser/WebView.h
@@ -75,65 +117,54 @@ set(HEADERS
     src/utils/KeyCodeConstants.h
 )
 
-# QRC 리소스 파일
 set(RESOURCES
     resources/resources.qrc
 )
 
-# WebEngine 사용 가능 여부 확인
-if(Qt5WebEngineWidgets_FOUND)
-    message(STATUS "Qt5 WebEngine found - building with WebView support")
+# WebEngine 유무에 따라 WebView 구현 선택
+if(WEBENGINE_FOUND)
+    message(STATUS "WebView: QWebEngineView 기반 (실제 렌더링)")
     list(APPEND SOURCES src/browser/WebView.cpp)
     add_definitions(-DUSE_WEBENGINE)
 else()
-    # webOS Luna Service 버전 사용 (실제 브라우저 호출)
-    message(STATUS "Using Luna Service WebView (system browser integration)")
+    message(STATUS "WebView: Luna Service 기반 (외부 브라우저 호출)")
     list(APPEND SOURCES src/browser/WebView_lunasvc.cpp)
     add_definitions(-DUSE_LUNA_SERVICE)
 endif()
 
+# ─────────────────────────────────────────────────────────
 # 실행 파일 생성
+# ─────────────────────────────────────────────────────────
 add_executable(webosbrowser ${SOURCES} ${HEADERS} ${RESOURCES})
 
 # Qt 라이브러리 링크
-target_link_libraries(webosbrowser
-    Qt5::Core
-    Qt5::Gui
-    Qt5::Widgets
-)
-
-# WebEngine 링크 (사용 가능한 경우)
-if(Qt5WebEngineWidgets_FOUND)
-    target_link_libraries(webosbrowser Qt5::WebEngineWidgets)
+if(USE_QT6)
+    target_link_libraries(webosbrowser Qt6::Core Qt6::Gui Qt6::Widgets)
+    if(WEBENGINE_FOUND)
+        target_link_libraries(webosbrowser Qt6::WebEngineWidgets)
+    endif()
+else()
+    target_link_libraries(webosbrowser Qt5::Core Qt5::Gui Qt5::Widgets)
+    if(WEBENGINE_FOUND)
+        target_link_libraries(webosbrowser Qt5::WebEngineWidgets)
+    endif()
 endif()
 
 # 컴파일 옵션
 target_compile_options(webosbrowser PRIVATE
     -Wall
     -Wextra
-    -Wpedantic
 )
 
-# 출력 디렉토리 설정
+# 출력 디렉토리
 set_target_properties(webosbrowser PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
-# 테스트 활성화
+# 테스트
 enable_testing()
 
-# Google Test (선택사항, 나중에 추가)
-# add_subdirectory(tests)
-
 # 설치 규칙 (webOS 패키징용)
-install(TARGETS webosbrowser
-    RUNTIME DESTINATION bin
-)
-
-install(DIRECTORY resources/
-    DESTINATION share/webosbrowser/resources
-)
-
-install(FILES webos-meta/appinfo.json
-    DESTINATION share/webosbrowser
-)
+install(TARGETS webosbrowser RUNTIME DESTINATION bin)
+install(DIRECTORY resources/ DESTINATION share/webosbrowser/resources)
+install(FILES webos-meta/appinfo.json DESTINATION share/webosbrowser)

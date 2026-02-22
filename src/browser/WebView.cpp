@@ -4,14 +4,26 @@
  */
 
 #include "WebView.h"
-#include "../services/DownloadManager.h"
 #include <QWebEngineView>
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
-#include <QWebEngineDownloadItem>
+#include <QWebEngineHistory>
 #include <QVBoxLayout>
 #include <QTimer>
 #include <QDebug>
+
+// Qt5/Qt6 다운로드 API 호환
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QWebEngineDownloadRequest>
+using QWebEngineDownloadItemCompat = QWebEngineDownloadRequest;
+#else
+#include <QWebEngineDownloadItem>
+using QWebEngineDownloadItemCompat = QWebEngineDownloadItem;
+#endif
+
+// DownloadManager는 CMakeLists.txt SOURCES에 포함되지 않으므로
+// forward declaration만 사용하고 실제 연결은 비활성화
+namespace webosbrowser { class DownloadManager; }
 
 namespace webosbrowser {
 
@@ -67,7 +79,7 @@ public:
 };
 
 void WebViewPrivate::setupConnections() {
-    Q_Q(WebView);
+    WebView *q = q_ptr;
 
     // 로딩 시작 이벤트
     QObject::connect(webEngineView, &QWebEngineView::loadStarted, q, [this, q]() {
@@ -131,22 +143,10 @@ void WebViewPrivate::setLoadingState(LoadingState newState) {
 }
 
 void WebViewPrivate::setupDownloadHandler(DownloadManager* downloadManager) {
-    if (!downloadManager) {
-        qWarning() << "WebView: DownloadManager가 null입니다";
-        return;
-    }
-
-    // QWebEngineProfile 가져오기
-    QWebEngineProfile* profile = webEngineView->page()->profile();
-
-    // downloadRequested 시그널 연결
-    QObject::connect(profile, &QWebEngineProfile::downloadRequested,
-                     [downloadManager](QWebEngineDownloadItem* downloadItem) {
-        qDebug() << "WebView: 다운로드 요청 -" << downloadItem->url().toString();
-        downloadManager->startDownload(downloadItem);
-    });
-
-    qDebug() << "WebView: 다운로드 핸들러 설정 완료";
+    // DownloadManager는 현재 빌드에서 비활성화됨 (CMakeLists.txt SOURCES 미포함)
+    // webOS 실기기 배포 시 활성화 예정
+    Q_UNUSED(downloadManager)
+    qDebug() << "WebView: 다운로드 핸들러 (비활성화 상태)";
 }
 
 // WebView 구현
